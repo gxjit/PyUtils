@@ -126,8 +126,8 @@ for file in fileList:
         sourceDur = metaData["streams"][0]["duration"]
 
         if pargs.mp3:
-            title, artist, album, track = getTags(
-                metaData, ["title", "artist", "album", "track"]
+            title, artist, album, track, disc, album_artist = getTags(
+                metaData, ["title", "artist", "album", "album_artist", "track", "disc"]
             )
             ffmpegCmd = [
                 ffmpegPath,
@@ -171,7 +171,9 @@ for file in fileList:
                 f"--artist={artist}",
                 f"--title={title}",
                 f"--album={album}",
+                f"--band={album_artist}",
                 f"--track={track}",
+                f"--disk={disc}",
             ]
 
         try:
