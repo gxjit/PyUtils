@@ -65,11 +65,12 @@ def getTags(metaData, tags):
     return retTags
 
 
-qaacPath, lamePath, ffprobePath = checkPaths(
+qaacPath, ffprobePath, ffmpegPath = checkPaths(
     {
         "qaac64": r"D:\PortableApps\qaac\qaac64.exe",
-        "lame": r"D:\PortableApps\lame\lame.exe",
+        # "lame": r"D:\PortableApps\lame\lame.exe",
         "ffprobe": r"C:\ffmpeg\bin\ffprobe.exe",
+        "ffmpeg": r"C:\ffmpeg\bin\ffmpeg.exe",
     }
 )
 
@@ -113,18 +114,33 @@ for file in fileList:
             "json",
             "-show_format",
             "-show_streams",
-            file,
+            str(file),
         ]
-        metaData = json.loads(subprocess.check_output(ffprobeCmd).decode("utf-8"))
-        mono = False if metaData["streams"][0]["channels"] > 1 else True
+        try:
+            metaData = json.loads(subprocess.check_output(ffprobeCmd).decode("utf-8"))
+        except subprocess.CalledProcessError:
+            break
+
+        if not pargs.mp3:
+            mono = False if metaData["streams"][0]["channels"] > 1 else True
+        sourceDur = metaData["streams"][0]["duration"]
 
         if pargs.mp3:
             title, artist, album, track = getTags(
                 metaData, ["title", "artist", "album", "track"]
             )
-            lameCmd = [lamePath, "--decode", str(file), str(wavOut)]
+            ffmpegCmd = [
+                ffmpegPath,
+                "-i",
+                str(file),
+                "-ac",
+                "1",
+                "-f",
+                "wav",
+                str(wavOut),
+            ]
             try:
-                subprocess.run(lameCmd)
+                subprocess.run(ffmpegCmd, check=True)
             except subprocess.CalledProcessError:
                 break
 
@@ -147,7 +163,7 @@ for file in fileList:
             "-o",
             str(outFile),
         ]
-        if not mono:
+        if not pargs.mp3 and not mono:
             cmd[10:10] = ["--matrix-preset", "mono"]
 
         if pargs.mp3:
@@ -169,6 +185,17 @@ for file in fileList:
         if pargs.mp3:
             wavOut.unlink()
         procPointer.write(f"\n{str(file)}")
+
+        if pargs.mp3:
+            ffprobeCmd[7] = f"{str(file)[:-4]}.m4a"
+        try:
+            metaData = json.loads(subprocess.check_output(ffprobeCmd).decode("utf-8"))
+        except subprocess.CalledProcessError:
+            break
+
+        outDur = metaData["streams"][0]["duration"]
+        if round(float(sourceDur)) != round(float(outDur)):
+            print("\n\nMismatched source and output duration.\n\n")
 
         choice = getInput()
         if choice == "e":
