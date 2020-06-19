@@ -17,6 +17,9 @@ def parseArgs():
 
     parser = argparse.ArgumentParser(description="Does Stuff.")
     parser.add_argument("dir", metavar="DirPath", help="Directory path", type=dirPath)
+    parser.add_argument(
+        "-m", "--mp3", action="store_true", help="Process mp3 files instead of m4a/m4b."
+    )
 
     return parser.parse_args()
 
@@ -31,11 +34,15 @@ def makeTargetDirs(dirPath, names):
     return retNames
 
 
-def checkPath(path, absPath=None):
-    retPath = shutil.which(path)
-    if isinstance(retPath, type(None)) and not isinstance(absPath, type(None)):
-        retPath = absPath
-    return retPath
+def checkPaths(paths):
+    retPaths = []
+    for path, absPath in paths.items():
+        retPath = shutil.which(path)
+        if isinstance(retPath, type(None)) and not isinstance(absPath, type(None)):
+            retPaths.append(absPath)
+        else:
+            retPaths.append(retPath)
+    return retPaths
 
 
 def getInput():
@@ -58,15 +65,24 @@ def getTags(metaData, tags):
     return retTags
 
 
-qaacPath = checkPath("qaac64", r"D:\PortableApps\qaac\qaac64.exe")
+qaacPath, lamePath, ffprobePath = checkPaths(
+    {
+        "qaac64": r"D:\PortableApps\qaac\qaac64.exe",
+        "lame": r"D:\PortableApps\lame\lame.exe",
+        "ffprobe": r"C:\ffmpeg\bin\ffprobe.exe",
+    }
+)
 
-lamePath = checkPath("lame", r"D:\PortableApps\lame\lame.exe")
+pargs = parseArgs()
 
-ffprobePath = checkPath("ffprobe", r"C:\ffmpeg\bin\ffprobe.exe")
+dirPath = pargs.dir.resolve()
 
-dirPath = parseArgs().dir.resolve()
+if pargs.mp3:
+    formats = [".mp3"]
+else:
+    formats = [".m4a", ".m4b"]
 
-fileList = [f for f in dirPath.iterdir() if f.is_file() and f.suffix in [".mp3"]]
+fileList = [f for f in dirPath.iterdir() if f.is_file() and f.suffix in formats]
 
 if not fileList:
     print("Nothing to do.")
@@ -85,11 +101,10 @@ else:
 
 processed = procPointer.read()
 
-
 for file in fileList:
     if str(file) not in processed:
-        outFile = outDir.joinpath(f"{file.stem}.m4a")
-        wavOut = wavDir.joinpath(f"{file.stem}.wav")
+        if pargs.mp3:
+            wavOut = wavDir.joinpath(f"{file.stem}.wav")
         ffprobeCmd = [
             ffprobePath,
             "-v",
@@ -103,14 +118,20 @@ for file in fileList:
         metaData = json.loads(subprocess.check_output(ffprobeCmd).decode("utf-8"))
         mono = False if metaData["streams"][0]["channels"] > 1 else True
 
-        title, artist, album, track = getTags(
-            metaData, ["title", "artist", "album", "track"]
-        )
+        if pargs.mp3:
+            title, artist, album, track = getTags(
+                metaData, ["title", "artist", "album", "track"]
+            )
+            lameCmd = [lamePath, "--decode", str(file), str(wavOut)]
+            try:
+                subprocess.run(lameCmd)
+            except subprocess.CalledProcessError:
+                break
 
-        lameCmd = [lamePath, "--decode", str(file), str(wavOut)]
+        outFile = outDir.joinpath(f"{file.stem}.m4a")
         cmd = [
             qaacPath,
-            str(wavOut),
+            str(wavOut if pargs.mp3 else file),
             "-V",
             "64",
             "--rate",
@@ -119,10 +140,6 @@ for file in fileList:
             "10000",
             "--limiter",
             "--threading",
-            f"--artist={artist}",
-            f"--title={title}",
-            f"--album={album}",
-            f"--track={track}",
             "--tmpdir",
             str(tmpDir),
             "--log",
@@ -133,13 +150,24 @@ for file in fileList:
         if not mono:
             cmd[10:10] = ["--matrix-preset", "mono"]
 
-        subprocess.run(lameCmd)
-        subprocess.run(cmd)
+        if pargs.mp3:
+            cmd[10:10] = [
+                f"--artist={artist}",
+                f"--title={title}",
+                f"--album={album}",
+                f"--track={track}",
+            ]
+
+        try:
+            subprocess.run(cmd, check=True)
+        except subprocess.CalledProcessError:
+            break
 
         dryFile = dryDir.joinpath(file.name)
         file.rename(dryFile)
         outFile.rename(f"{str(file)[:-4]}.m4a")
-        wavOut.unlink()
+        if pargs.mp3:
+            wavOut.unlink()
         procPointer.write(f"\n{str(file)}")
 
         choice = getInput()
@@ -155,13 +183,18 @@ notProcessed = [f for f in fileList if str(f) not in processed]
 
 if procFile.stat().st_size == 0 or not notProcessed:
     procFile.unlink()
+
 tmpDir.rmdir()
 outDir.rmdir()
 wavDir.rmdir()
+
+if not list(dryDir.iterdir()):
+    dryDir.rmdir()
+
+if not list(logsDir.iterdir()):
+    logsDir.rmdir()
 
 
 #  --concat -o i2.m4a
 
 # disc tag
-
-# f"{str(outFile)[:-4]}.log"
