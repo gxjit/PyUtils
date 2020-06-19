@@ -39,7 +39,7 @@ def checkPath(path, absPath=None):
 
 
 def getInput():
-    print("\nPress Enter Key continue or 'e' to exit.")
+    print("\nPress Enter Key continue or input 'e' to exit.")
     try:
         choice = input("\n> ")
         if choice not in ["e", ""]:
@@ -51,8 +51,9 @@ def getInput():
 
     return choice
 
+
 def getTags(metaData, tags):
-    js = json.loads(metaData)["format"]["tags"]
+    js = metaData["format"]["tags"]
     retTags = [js.get(tag, "") for tag in tags]
     return retTags
 
@@ -96,17 +97,14 @@ for file in fileList:
             "-print_format",
             "json",
             "-show_format",
+            "-show_streams",
             file,
         ]
-        metaData = subprocess.check_output(ffprobeCmd).decode("utf-8")
-        js = json.loads(metaData)["format"]["tags"]
-        artist = js.get("artist") or ""
-        title = js.get("title") or ""
-        album_artist = js.get("album_artist") or ""
-        album = js.get("album")
-        track = js.get("track")
-        artist, album, album, track = getTags(
-            metaData, ["artist", "album", "album", "track"]
+        metaData = json.loads(subprocess.check_output(ffprobeCmd).decode("utf-8"))
+        mono = False if metaData["streams"][0]["channels"] > 1 else True
+
+        title, artist, album, track = getTags(
+            metaData, ["title", "artist", "album", "track"]
         )
 
         lameCmd = [lamePath, "--decode", str(file), str(wavOut)]
@@ -121,8 +119,6 @@ for file in fileList:
             "10000",
             "--limiter",
             "--threading",
-            "--matrix-preset",
-            "mono",
             f"--artist={artist}",
             f"--title={title}",
             f"--album={album}",
@@ -134,6 +130,9 @@ for file in fileList:
             "-o",
             str(outFile),
         ]
+        if not mono:
+            cmd[10:10] = ["--matrix-preset", "mono"]
+
         subprocess.run(lameCmd)
         subprocess.run(cmd)
 
