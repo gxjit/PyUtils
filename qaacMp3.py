@@ -51,6 +51,11 @@ def getInput():
 
     return choice
 
+def getTags(metaData, tags):
+    js = json.loads(metaData)["format"]["tags"]
+    retTags = [js.get(tag, "") for tag in tags]
+    return retTags
+
 
 qaacPath = checkPath("qaac64", r"D:\PortableApps\qaac\qaac64.exe")
 
@@ -78,12 +83,6 @@ else:
     procPointer = open(procFile, "w+")
 
 processed = procPointer.read()
-
-
-def getTags(metaData, tags):
-    js = json.loads(metaData)["format"]["tags"]
-    retTags = [(js.get(tag) or "") for tag in tags]
-    return retTags
 
 
 for file in fileList:
@@ -162,14 +161,8 @@ outDir.rmdir()
 wavDir.rmdir()
 
 
-# D:\PortableApps\qaac\qaac64.exe *.m4a -V64 --rate 22050
-# --lowpass 14000 --limiter --threading --matrix-preset mono
-# -S --log --tmpdir ./tmp/
 #  --concat -o i2.m4a
 
-# lame --decode "i.mp3" - |
+# disc tag
 
-# 2nd format > tags > title artist album_artist album genre track disc sort_name sort_album sort_artist
-
-# ffprobe -v quiet -print_format json -show_format "01 Sixtyniner.m4a" > "01.json"
 # f"{str(outFile)[:-4]}.log"

@@ -127,13 +127,4 @@ tmpDir.rmdir()
 outDir.rmdir()
 
 
-# D:\PortableApps\qaac\qaac64.exe *.m4a -V64 --rate 22050
-# --lowpass 14000 --limiter --threading --matrix-preset mono
-# -S --log --tmpdir ./tmp/
 #  --concat -o i2.m4a
-
-# lame --decode "i.mp3" - |
-
-# 2nd format > tags > title artist album_artist album genre track disc sort_name sort_album sort_artist
-
-# ffprobe -v quiet -print_format json -show_format "01 Sixtyniner.m4a" > "01.json"
