@@ -1,8 +1,10 @@
 import argparse
 import functools as fn
 import json
+import math
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -31,6 +33,21 @@ def parseArgs():
         type=int,
         help="Wait time in seconds between each iteration, default is 10",
     )
+    parser.add_argument(
+        "-s",
+        "--split",
+        nargs="?",
+        default=None,
+        const=300,
+        type=int,
+        help="Maximum split size in MB for multi-part archive, default is 300 MB",
+    )
+    parser.add_argument(
+        "-i",
+        "--ignore-tags",
+        action="store_true",
+        help=r"Use filenames instead of tags",
+    )
     return parser.parse_args()
 
 
@@ -42,6 +59,10 @@ slugifyP = fn.partial(
     regex_pattern=r"\)\(\.",
     save_order=True,
 )
+
+
+def nSort(s, _nsre=re.compile("([0-9]+)")):
+    return [int(text) if text.isdigit() else text.lower() for text in _nsre.split(s)]
 
 
 def makeTargetDirs(dirPath, names):
@@ -69,6 +90,11 @@ def checkPaths(paths):
         else:
             retPaths.append(retPath)
     return retPaths
+
+
+getFileList = lambda dirPath: [
+    f for f in dirPath.iterdir() if f.is_file() and f.suffix == ".m4a"
+]
 
 
 getffprobeCmd = lambda ffprobePath, file: [
@@ -102,6 +128,29 @@ getffmpegCmd = lambda ffmpegPath, ccFile, chFile, outFile: [
 ]
 
 
+def getSize(totalSize, maxSplit):
+    fSize = 0
+    for i in range(2, 15):
+        splitSize = math.ceil(totalSize / i)
+        if totalSize <= splitSize:
+            continue
+        if splitSize <= maxSplit:
+            fSize = splitSize
+            return i, splitSize
+    if fSize == 0:
+        return 1, totalSize
+
+
+bytesToMB = lambda bytes: math.ceil(bytes / float(1 << 20))
+
+
+def getFileSizes(fileList):
+    totalSize = 0
+    for file in fileList:
+        totalSize += file.stat().st_size
+    return totalSize
+
+
 def getMetaData(ffprobePath, file):
     ffprobeCmd = getffprobeCmd(ffprobePath, file)
     metaData = json.loads(subprocess.check_output(ffprobeCmd).decode("utf-8"))
@@ -115,78 +164,120 @@ def getConcatList(fileList):
     return concatList
 
 
-# def getTags(metaData, tags):
-#     js = metaData["format"]["tags"]
-#     return [js.get(tag, "") for tag in tags]
+def getTags(metaData, tags):
+    js = metaData["format"]["tags"]
+    retTags = []
+    for tag in tags:
+        t = js.get(tag)
+        if t:
+            retTags.append(slugifyP(t))
+        else:
+            retTags.append(t)
+    return retTags
 
 
-def getChapters(fileList, metaData):
-    # artist, title = getTags(metaData, ["artist", "title"])
-    chapters = ";FFMETADATA1\n\n"
+def getChapters(fileList, metaData, album):
+    artist, albumArtist = getTags(
+        metaData[fileList[0].name], ["artist", "album_artist"]
+    )
+    chapters = f";FFMETADATA1\ntitle={album}\nalbum={album}\n"
+    if artist or albumArtist:
+        chapters += f"artist={albumArtist or artist}\n"
     prevDur = 0
     for file in fileList:
         timeBase = metaData[file.name]["streams"][0]["time_base"]
         duration = int(metaData[file.name]["streams"][0]["duration_ts"])
+        artist = getTags(metaData[file.name], ["artist"])[0]
         title = slugifyP(metaData[file.name]["format"]["tags"].get("title", file.name))
         chapters += f"\n[CHAPTER]\nTIMEBASE={timeBase}\nSTART={str(prevDur)}\n"
         prevDur += duration
         chapters += f"END={str(prevDur)}\ntitle={title}\n"
+        if artist:
+            chapters += f"artist={artist}\n"
     return chapters
 
 
-# def swr(file):
-#     print(
-#         f"\n\nERROR: Something went wrong while processing following file.\n > {str(file.name)}.\n"
-#     )
+def writeChapters(dirPath, fileList, metaData):
+    chaptersFile = dirPath.joinpath("chapters")
+    with open(chaptersFile, "w") as ch:
+        ch.write(getChapters(fileList, metaData, album))
+    return chaptersFile
+
+
+def writeConcat(dirPath, fileList):
+    concatFile = dirPath.joinpath("concat")
+    with open(concatFile, "w") as cc:
+        cc.write(getConcatList(fileList))
+    return concatFile
+
+
+def runCmd(cmd):
+    print("\n---------------------------------------")
+    print("\n", cmd[-1])
+    subprocess.run(cmd)
+    print("\n---------------------------------------\n")
+    input("\nPress Enter to continue...")
+
 
 pargs = parseArgs()
 
 dirPath = pargs.dir.resolve()
 
-
-fileList = [f for f in dirPath.iterdir() if f.is_file() and f.suffix == ".m4a"]
+fileList = sorted(getFileList(dirPath), key=lambda k: nSort(str(k.stem)))
 
 if not fileList:
     print("Nothing to do.")
     sys.exit()
 
+totalSize = bytesToMB(getFileSizes(fileList))
 
 ffprobePath, ffmpegPath = checkPaths(
-    {"ffprobe": r"C:\ffmpeg\bin\ffprobe.exe", "ffmpeg": r"C:\ffmpeg\bin\ffmpeg.exe",}
+    {"ffprobe": r"C:\ffmpeg\bin\ffprobe.exe", "ffmpeg": r"C:\ffmpeg\bin\ffmpeg.exe"}
 )
-
 
 metaData = {str(f.name): getMetaData(ffprobePath, f) for f in fileList}
 
-
-chaptersFile = dirPath.joinpath("chapters")
-with open(chaptersFile, "w") as ch:
-    ch.write(getChapters(fileList, metaData))
-
-concatFile = dirPath.joinpath("concat")
-with open(concatFile, "w") as cc:
-    cc.write(getConcatList(fileList))
-
-outDir = makeTargetDirs(dirPath, ["out"])[0]
-outFile = outDir.joinpath("out.m4a")
-subprocess.run(
-    getffmpegCmd(ffmpegPath, str(concatFile), str(chaptersFile), str(outFile))
+album = slugifyP(
+    metaData[fileList[0].name]["format"]["tags"].get("album", f"{str(dirPath.name)}")
 )
 
-rmEmptyDirs([outDir])
+if pargs.ignore_tags:
+    metaData["format"]["tags"] = {}
 
-concatFile.unlink()
-chaptersFile.unlink()
+outDir, dryDir = makeTargetDirs(dirPath, ["out", "dry"])
 
-# rm residue chaps concat files
+if pargs.split:
+    splitInfo = getSize(totalSize, pargs.split)
+    splitSize = splitInfo[1]
+    splitNum = math.ceil(len(fileList) / splitInfo[0])
+else:
+    splitInfo = [1]
 
+for i in range(splitInfo[0]):
+    if pargs.split:
+        partFiles = fileList[splitNum * i : splitNum * (i + 1)]
+        outFile = outDir.joinpath(f"{album} - Part {i}.m4a")
+    else:
+        partFiles = fileList
+        outFile = outDir.joinpath(f"{album}.m4a")
+
+    ccFile = writeConcat(outDir, partFiles)
+    chFile = writeChapters(outDir, partFiles, metaData)
+    cmd = getffmpegCmd(ffmpegPath, str(ccFile), str(chFile), str(outFile))
+    runCmd(cmd)
+    ccFile.unlink()
+    chFile.unlink()
+
+    for file in partFiles:
+        dryFile = dryDir.joinpath(file.name)
+        file.rename(dryFile)
+
+for file in outDir.iterdir():
+    newPath = dirPath.joinpath(file.name)
+    file.rename(newPath)
+
+rmEmptyDirs([outDir, dryDir])
 
 # https://trac.ffmpeg.org/wiki/Concatenate
 # https://ffmpeg.org/ffmpeg-formats.html#Metadata-1
 # https://ffmpeg.org/ffmpeg-formats.html#concat-1
-
-# -report
-# Dump full command line and console output to a file named "program-YYYYMMDD-HHMMSS.log" in the current directory. This file can be useful for bug reports. It also implies "-loglevel debug".
-# move "program-YYYYMMDD-HHMMSS.log" to ./log
-
-# secToNs = lambda sec: sec * 1000000000

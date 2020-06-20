@@ -258,17 +258,3 @@ if procFile.stat().st_size == 0 or not notProcessed:
 
 
 rmEmptyDirs([tmpDir, outDir, wavDir, dryDir, logsDir])
-
-#  --concat -o i2.m4a
-# https://trac.ffmpeg.org/wiki/Concatenate
-# https://ffmpeg.org/ffmpeg-formats.html#Metadata-1
-
-# -report
-# Dump full command line and console output to a file named "program-YYYYMMDD-HHMMSS.log" in the current directory. This file can be useful for bug reports. It also implies "-loglevel debug".
-
-# move "program-YYYYMMDD-HHMMSS.log" to ./log
-# ffmpeg -n -f concat -safe 0 -i <(create_filelist "$@") -c copy "$output"
-# (for %i in (*.wav) do @echo file '%i') > mylist.txt
-# for f in ./*.wav; do echo "file '$f'" >> mylist.txt; done
-# ffmpeg -f concat -safe 0 -i mylist.txt -c copy output.wav
-# ffmpeg -f concat -safe 0 -i mylist.txt -i chaps.txt  -map_metadata 1 -c copy output.wav
