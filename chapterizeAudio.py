@@ -186,11 +186,11 @@ def getTags(metaData, tags):
     return retTags
 
 
-def getChapters(fileList, metaData, album):
+def getChapters(fileList, metaData, album, ix):
     artist, albumArtist = getTags(
         metaData[fileList[0].name], ["artist", "album_artist"]
     )
-    chapters = f";FFMETADATA1\ntitle={album}\nalbum={album}\n"
+    chapters = f";FFMETADATA1\ntitle={album}\nalbum={album}\ntrack={str(ix+1)}\n"
     if artist or albumArtist:
         chapters += f"artist={albumArtist or artist}\n"
     else:
@@ -209,10 +209,10 @@ def getChapters(fileList, metaData, album):
     return chapters
 
 
-def writeChapters(dirPath, fileList, metaData):
+def writeChapters(dirPath, fileList, metaData, i):
     chaptersFile = dirPath.joinpath("chapters")
     with open(chaptersFile, "w") as ch:
-        ch.write(getChapters(fileList, metaData, album))
+        ch.write(getChapters(fileList, metaData, album, i))
     return chaptersFile
 
 
@@ -237,11 +237,11 @@ dirPath = pargs.dir.resolve()
 
 fileList = sorted(getFileList(dirPath), key=lambda k: nSort(str(k.stem)))
 
-audioExt = fileList[0].suffix
-
 if not fileList:
     print("Nothing to do.")
     sys.exit()
+
+audioExt = fileList[0].suffix
 
 totalSize = bytesToMB(getFileSizes(fileList))
 
@@ -270,13 +270,13 @@ else:
 for i in range(splitInfo[0]):
     if pargs.split:
         partFiles = fileList[splitNum * i : splitNum * (i + 1)]
-        outFile = outDir.joinpath(f"{album} - Part {i}{audioExt}")
+        outFile = outDir.joinpath(f"{album} - Part {str(i+1)}{audioExt}")
     else:
         partFiles = fileList
         outFile = outDir.joinpath(f"{album}{audioExt}")
 
     ccFile = writeConcat(outDir, partFiles)
-    chFile = writeChapters(outDir, partFiles, metaData)
+    chFile = writeChapters(outDir, partFiles, metaData, i)
     cmd = getffmpegCmd(ffmpegPath, str(ccFile), str(chFile), str(outFile))
     runCmd(cmd)
     ccFile.unlink()
