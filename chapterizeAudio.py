@@ -1,5 +1,4 @@
 import argparse
-import functools as fn
 import json
 import math
 import os
@@ -8,8 +7,7 @@ import re
 import shutil
 import subprocess
 import sys
-
-from slugify import slugify
+import unicodedata
 
 
 def parseArgs():
@@ -51,14 +49,26 @@ def parseArgs():
     return parser.parse_args()
 
 
-slugifyP = fn.partial(
-    slugify,
-    separator=" ",
-    lowercase=False,
-    replacements=([[":", "_"], ["-", "_"], ["[", "("], ["]", ")"]]),
-    regex_pattern=r"\)\(\.",
-    save_order=True,
-)
+def slugify(value, replace={}, keepSpace=True):
+    """
+    Adapted from django.utils.text.slugify
+    https://docs.djangoproject.com/en/3.0/_modules/django/utils/text/#slugify
+    """
+    replace.update({"[": "(", "]": ")", ":": "_"})
+    value = str(value)
+    value = (
+        unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    )
+
+    for k, v in replace.items():
+        value = value.replace(k, v)
+    value = re.sub(r"[^\w\s)(_-]", "", value).strip()
+
+    if keepSpace:
+        value = re.sub(r"[\s]+", " ", value)
+    else:
+        value = re.sub(r"[-\s]+", "-", value)
+    return value
 
 
 def nSort(s, _nsre=re.compile("([0-9]+)")):
@@ -93,7 +103,7 @@ def checkPaths(paths):
 
 
 getFileList = lambda dirPath: [
-    f for f in dirPath.iterdir() if f.is_file() and f.suffix == ".m4a"
+    f for f in dirPath.iterdir() if f.is_file() and f.suffix in [".m4a", ".m4b"]
 ]
 
 
@@ -170,7 +180,7 @@ def getTags(metaData, tags):
     for tag in tags:
         t = js.get(tag)
         if t:
-            retTags.append(slugifyP(t))
+            retTags.append(slugify(t))
         else:
             retTags.append(t)
     return retTags
@@ -183,12 +193,14 @@ def getChapters(fileList, metaData, album):
     chapters = f";FFMETADATA1\ntitle={album}\nalbum={album}\n"
     if artist or albumArtist:
         chapters += f"artist={albumArtist or artist}\n"
+    else:
+        chapters += f"artist={fileList[0].parent.parent.stem}\n"
     prevDur = 0
     for file in fileList:
         timeBase = metaData[file.name]["streams"][0]["time_base"]
         duration = int(metaData[file.name]["streams"][0]["duration_ts"])
         artist = getTags(metaData[file.name], ["artist"])[0]
-        title = slugifyP(metaData[file.name]["format"]["tags"].get("title", file.name))
+        title = slugify(metaData[file.name]["format"]["tags"].get("title", file.name))
         chapters += f"\n[CHAPTER]\nTIMEBASE={timeBase}\nSTART={str(prevDur)}\n"
         prevDur += duration
         chapters += f"END={str(prevDur)}\ntitle={title}\n"
@@ -212,10 +224,10 @@ def writeConcat(dirPath, fileList):
 
 
 def runCmd(cmd):
-    print("\n---------------------------------------")
+    print("\n------------------------------------")
     print("\n", cmd[-1])
     subprocess.run(cmd)
-    print("\n---------------------------------------\n")
+    print("\n------------------------------------\n")
     input("\nPress Enter to continue...")
 
 
@@ -224,6 +236,8 @@ pargs = parseArgs()
 dirPath = pargs.dir.resolve()
 
 fileList = sorted(getFileList(dirPath), key=lambda k: nSort(str(k.stem)))
+
+audioExt = fileList[0].suffix
 
 if not fileList:
     print("Nothing to do.")
@@ -237,7 +251,7 @@ ffprobePath, ffmpegPath = checkPaths(
 
 metaData = {str(f.name): getMetaData(ffprobePath, f) for f in fileList}
 
-album = slugifyP(
+album = slugify(
     metaData[fileList[0].name]["format"]["tags"].get("album", f"{str(dirPath.name)}")
 )
 
@@ -256,10 +270,10 @@ else:
 for i in range(splitInfo[0]):
     if pargs.split:
         partFiles = fileList[splitNum * i : splitNum * (i + 1)]
-        outFile = outDir.joinpath(f"{album} - Part {i}.m4a")
+        outFile = outDir.joinpath(f"{album} - Part {i}{audioExt}")
     else:
         partFiles = fileList
-        outFile = outDir.joinpath(f"{album}.m4a")
+        outFile = outDir.joinpath(f"{album}{audioExt}")
 
     ccFile = writeConcat(outDir, partFiles)
     chFile = writeChapters(outDir, partFiles, metaData)
