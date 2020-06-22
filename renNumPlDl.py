@@ -32,4 +32,4 @@ for file in dirPath.iterdir():
     # print(file.stem)
     # print(newName)
     # print("----\n")
-    file.rename(f"{newName}{file.suffix}")
+    file.rename(dirPath.joinpath(f"{newName}{file.suffix}"))

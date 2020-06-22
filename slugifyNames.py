@@ -51,4 +51,4 @@ for file in getFileList(dirPath):
     # print(file.name)
     # print(newName)
     # print("----\n")
-    file.rename(f"{newName}{file.suffix}")
+    file.rename(dirPath.joinpath(f"{newName}{file.suffix}"))
