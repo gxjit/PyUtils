@@ -174,77 +174,78 @@ else:
 processed = procPointer.read()
 
 for file in fileList:
-    if str(file) not in processed:
+    if str(file) in processed:
+        continue
+
+    try:
+        metaData = getMetaData(ffprobePath, file)
+    except subprocess.CalledProcessError:
+        swr(file)
+        break
+
+    sourceDur = metaData["streams"][0]["duration"]
+    mono = False if metaData["streams"][0]["channels"] > 1 else True
+
+    outFile = outDir.joinpath(f"{file.stem}.m4a")
+    cmd = getQaacCmd(qaacPath, file, outFile, tmpDir, logsDir)
+
+    if pargs.mp3:
+        wavOut = wavDir.joinpath(f"{file.stem}.wav")
+        ffmpegCmd = getffmpegCmd(ffmpegPath, file, wavOut)
+        title, artist, album, track, disc, album_artist = getTags(
+            metaData, ["title", "artist", "album", "album_artist", "track", "disc"]
+        )
+
+        cmd[1] = wavOut
+        cmd[10:10] = [
+            f"--artist={artist}",
+            f"--title={title}",
+            f"--album={album}",
+            f"--band={album_artist}",
+            f"--track={track}",
+            f"--disk={disc}",
+        ]
 
         try:
-            metaData = getMetaData(ffprobePath, file)
+            subprocess.run(ffmpegCmd, check=True)
         except subprocess.CalledProcessError:
             swr(file)
             break
 
-        sourceDur = metaData["streams"][0]["duration"]
-        mono = False if metaData["streams"][0]["channels"] > 1 else True
+    if not pargs.mp3 and not mono:
+        cmd[10:10] = ["--matrix-preset", "mono"]
 
-        outFile = outDir.joinpath(f"{file.stem}.m4a")
-        cmd = getQaacCmd(qaacPath, file, outFile, tmpDir, logsDir)
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError:
+        swr(file)
+        break
 
-        if pargs.mp3:
-            wavOut = wavDir.joinpath(f"{file.stem}.wav")
-            ffmpegCmd = getffmpegCmd(ffmpegPath, file, wavOut)
-            title, artist, album, track, disc, album_artist = getTags(
-                metaData, ["title", "artist", "album", "album_artist", "track", "disc"]
-            )
+    dryFile = dryDir.joinpath(file.name)
+    file.rename(dryFile)
+    outFile.rename(f"{str(file)[:-4]}.m4a")
+    if pargs.mp3:
+        wavOut.unlink()
 
-            cmd[1] = wavOut
-            cmd[10:10] = [
-                f"--artist={artist}",
-                f"--title={title}",
-                f"--album={album}",
-                f"--band={album_artist}",
-                f"--track={track}",
-                f"--disk={disc}",
-            ]
+    try:
+        metaData = getMetaData(ffprobePath, f"{str(file)[:-4]}.m4a")
+    except subprocess.CalledProcessError:
+        swr(file)
+        break
 
-            try:
-                subprocess.run(ffmpegCmd, check=True)
-            except subprocess.CalledProcessError:
-                swr(file)
-                break
+    procPointer.write(f"\n{str(file)}")
 
-        if not pargs.mp3 and not mono:
-            cmd[10:10] = ["--matrix-preset", "mono"]
+    outDur = metaData["streams"][0]["duration"]
+    if int(float(sourceDur)) != int(float(outDur)):
+        print(f"\n\n{str(file)}\nERROR: Mismatched source and output duration.\n\n")
 
-        try:
-            subprocess.run(cmd, check=True)
-        except subprocess.CalledProcessError:
-            swr(file)
+    if pargs.wait:
+        print(f"\nWaiting for {str(pargs.wait)} seconds.\n>")
+        time.sleep(int(pargs.wait))
+    else:
+        choice = getInput()
+        if choice == "e":
             break
-
-        dryFile = dryDir.joinpath(file.name)
-        file.rename(dryFile)
-        outFile.rename(f"{str(file)[:-4]}.m4a")
-        if pargs.mp3:
-            wavOut.unlink()
-
-        try:
-            metaData = getMetaData(ffprobePath, f"{str(file)[:-4]}.m4a")
-        except subprocess.CalledProcessError:
-            swr(file)
-            break
-
-        procPointer.write(f"\n{str(file)}")
-
-        outDur = metaData["streams"][0]["duration"]
-        if int(float(sourceDur)) != int(float(outDur)):
-            print(f"\n{str(file)}\nERROR: Mismatched source and output duration.\n\n")
-
-        if pargs.wait:
-            print(f"\nWaiting for {str(pargs.wait)} seconds.\n>")
-            time.sleep(int(pargs.wait))
-        else:
-            choice = getInput()
-            if choice == "e":
-                break
 
 
 procPointer.seek(0, 0)

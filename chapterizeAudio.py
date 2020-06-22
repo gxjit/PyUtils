@@ -228,7 +228,7 @@ def runCmd(cmd):
     print("\n", cmd[-1])
     subprocess.run(cmd)
     print("\n------------------------------------\n")
-    input("\nPress Enter to continue...")
+
 
 
 pargs = parseArgs()
