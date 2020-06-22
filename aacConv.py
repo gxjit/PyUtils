@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 import os
 import pathlib
 import shutil
@@ -70,6 +71,13 @@ def getInput():
     return choice
 
 
+def getFileSizes(fileList):
+    totalSize = 0
+    for file in fileList:
+        totalSize += file.stat().st_size
+    return totalSize
+
+
 def getTags(metaData, tags):
     js = metaData["format"]["tags"]
     return [js.get(tag, "") for tag in tags]
@@ -131,6 +139,20 @@ def getMetaData(ffprobePath, file):
     return metaData
 
 
+def getTrackNum(num):
+    if "/" in num:
+        return num.split("/")[0]
+    else:
+        return num
+
+
+getFileList = lambda dirPath, exts: [
+    f for f in dirPath.iterdir() if f.is_file() and f.suffix in exts
+]
+
+bytesToMB = lambda bytes: math.ceil(bytes / float(1 << 20))
+
+
 def swr(file):
     print(
         f"\n\nERROR: Something went wrong while processing following file.\n > {str(file.name)}.\n"
@@ -146,11 +168,13 @@ if pargs.mp3:
 else:
     formats = [".m4a", ".m4b"]
 
-fileList = [f for f in dirPath.iterdir() if f.is_file() and f.suffix in formats]
+fileList = getFileList(dirPath, formats)
 
 if not fileList:
     print("Nothing to do.")
     sys.exit()
+
+oldSize = bytesToMB(getFileSizes(fileList))
 
 qaacPath, ffprobePath, ffmpegPath = checkPaths(
     {
@@ -192,9 +216,12 @@ for file in fileList:
     if pargs.mp3:
         wavOut = wavDir.joinpath(f"{file.stem}.wav")
         ffmpegCmd = getffmpegCmd(ffmpegPath, file, wavOut)
-        title, artist, album, track, disc, album_artist = getTags(
+        title, artist, album, album_artist, track, disc = getTags(
             metaData, ["title", "artist", "album", "album_artist", "track", "disc"]
         )
+        # track = getTrackNum(track)
+
+        # disc = getTrackNum(disc)
 
         cmd[1] = wavOut
         cmd[10:10] = [
@@ -237,7 +264,10 @@ for file in fileList:
 
     outDur = metaData["streams"][0]["duration"]
     if int(float(sourceDur)) != int(float(outDur)):
-        print(f"\n\n{str(file)}\nERROR: Mismatched source and output duration.\n\n")
+        msg = f"\n\n{str(file.name)}\nERROR: Mismatched source and output duration.\nSource duration:{sourceDur}\nDestination duration:{outDur}\n"
+        print(msg)
+        with open(logsDir.joinpath(f"{file.stem}.log"), "a") as f:
+            f.write(msg)
 
     if pargs.wait:
         print(f"\nWaiting for {str(pargs.wait)} seconds.\n>")
@@ -247,6 +277,12 @@ for file in fileList:
         if choice == "e":
             break
 
+newSize = bytesToMB(getFileSizes(getFileList(dirPath, [".m4a"])))
+
+with open(logsDir.joinpath(f"{dirPath.name}.log"), "a") as f:
+    msg = f"\n\nOld size: {oldSize} MB\nNew Size: {newSize} MB"
+    print(msg)
+    f.write(msg)
 
 procPointer.seek(0, 0)
 processed = procPointer.read()
