@@ -25,6 +25,9 @@ def parseArgs():
         "-m", "--mp3", action="store_true", help="Process mp3 files instead of m4a/m4b."
     )
     parser.add_argument(
+        "-s", "--stereo", action="store_true", help="Keep both channels."
+    )
+    parser.add_argument(
         "-w",
         "--wait",
         nargs="?",
@@ -33,6 +36,7 @@ def parseArgs():
         type=int,
         help="Wait time in seconds between each iteration, default is 10",
     )
+
     return parser.parse_args()
 
 
@@ -119,11 +123,12 @@ getQaacCmd = lambda qaacPath, file, outFile, tmpDir, logsDir: [
     "-V",
     "64",
     "--rate",
-    "22050", # 22050, 32000 -> cutoff 11, 16 Khz
+    "22050",  # 22050, 32000 -> cutoff 11, 16 Khz
     "--limiter",
     "--threading",
     "--tmpdir",
     str(tmpDir),
+    "--verbose",
     "--log",
     str(logsDir.joinpath(f"{file.stem}.log")),
     "-o",
@@ -237,7 +242,7 @@ for file in fileList:
             swr(file)
             break
 
-    if not pargs.mp3 and not mono:
+    if not pargs.mp3 and not mono and not pargs.stereo:
         cmd[10:10] = ["--matrix-preset", "mono"]
 
     try:
