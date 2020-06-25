@@ -119,9 +119,7 @@ getQaacCmd = lambda qaacPath, file, outFile, tmpDir, logsDir: [
     "-V",
     "64",
     "--rate",
-    "22050",
-    "--lowpass",
-    "10000",
+    "22050", # 22050, 32000 -> cutoff 11, 16 Khz
     "--limiter",
     "--threading",
     "--tmpdir",
