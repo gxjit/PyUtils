@@ -28,6 +28,9 @@ def parseArgs():
         "-s", "--stereo", action="store_true", help="Keep both channels."
     )
     parser.add_argument(
+        "-hq", "--hq", action="store_true", help="HQ sample rate/cutoff."
+    )
+    parser.add_argument(
         "-w",
         "--wait",
         nargs="?",
@@ -245,6 +248,9 @@ for file in fileList:
     if not pargs.mp3 and not mono and not pargs.stereo:
         cmd[10:10] = ["--matrix-preset", "mono"]
 
+    if pargs.hq:
+        cmd[5] = "32000"
+
     try:
         subprocess.run(cmd, check=True)
     except subprocess.CalledProcessError:
@@ -268,6 +274,9 @@ for file in fileList:
     outDur = metaData["streams"][0]["duration"]
     if int(float(sourceDur)) != int(float(outDur)):
         msg = f"\n\n{str(file.name)}\nERROR: Mismatched source and output duration.\nSource duration:{sourceDur}\nDestination duration:{outDur}\n"
+        diff = int(float(outDur)) - int(float(sourceDur))
+        if diff > 1 or diff < 0:
+            msg += "\nSource and output durations are significantly different.\n"
         print(msg)
         with open(logsDir.joinpath(f"{file.stem}.log"), "a") as f:
             f.write(msg)
