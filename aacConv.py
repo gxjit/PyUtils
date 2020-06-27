@@ -111,7 +111,7 @@ getffmpegCmd = lambda ffmpegPath, file, wavOut: [
     ffmpegPath,
     "-i",
     str(file),
-    "-ac",
+    "-ac",  # pargs.stereo
     "1",
     "-f",
     "wav",
@@ -239,13 +239,17 @@ for file in fileList:
             f"--disk={disc}",
         ]
 
+        if pargs.stereo:
+            ffmpegCmd.remove("-ac")
+            ffmpegCmd.remove("1")
+
         try:
             subprocess.run(ffmpegCmd, check=True)
         except subprocess.CalledProcessError:
             swr(file)
             break
 
-    if not pargs.mp3 and not mono and not pargs.stereo:
+    if not pargs.mp3 and not mono:
         cmd[10:10] = ["--matrix-preset", "mono"]
 
     if pargs.hq:
