@@ -22,7 +22,10 @@ def parseArgs():
         "-d", "--dir", required=True, help="Directory path", type=dirPath
     )
     parser.add_argument(
-        "-m", "--mp3", action="store_true", help="Process mp3 files instead of m4a/m4b."
+        "-m",
+        "--mp3",
+        action="store_true",
+        help="Process mp3/wma files instead of m4a/m4b.",
     )
     parser.add_argument(
         "-s", "--stereo", action="store_true", help="Keep both channels."
@@ -170,7 +173,7 @@ pargs = parseArgs()
 dirPath = pargs.dir.resolve()
 
 if pargs.mp3:
-    formats = [".mp3"]
+    formats = [".mp3", ".wma", ".mka"]
 else:
     formats = [".m4a", ".m4b"]
 
@@ -249,7 +252,7 @@ for file in fileList:
             swr(file)
             break
 
-    if not pargs.mp3 and not mono:
+    if not pargs.mp3 and not mono and not pargs.stereo:
         cmd[10:10] = ["--matrix-preset", "mono"]
 
     if pargs.hq:
@@ -277,10 +280,10 @@ for file in fileList:
 
     outDur = metaData["streams"][0]["duration"]
     if int(float(sourceDur)) != int(float(outDur)):
-        msg = f"\n\n{str(file.name)}\nERROR: Mismatched source and output duration.\nSource duration:{sourceDur}\nDestination duration:{outDur}\n"
+        msg = f"\n\n{str(file.name)}\nWARNING: Mismatched source and output duration.\nSource duration:{sourceDur}\nDestination duration:{outDur}\n"
         diff = int(float(outDur)) - int(float(sourceDur))
         if diff > 1 or diff < 0:
-            msg += "\nSource and output durations are significantly different.\n"
+            msg += "\nWARNING: Source and output durations are significantly different.\n"
         print(msg)
         with open(logsDir.joinpath(f"{file.stem}.log"), "a") as f:
             f.write(msg)
