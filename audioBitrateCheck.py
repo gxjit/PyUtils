@@ -65,7 +65,7 @@ def checkPaths(paths):
 
 ffprobePath = checkPaths({"ffprobe": r"C:\ffmpeg\bin\ffprobe.exe"})[0]
 
-audioExts = (".m4a", ".mp3", ".opus", ".ogg", ".wma", ".mka")
+audioExts = (".m4a", ".m4b", ".mp3", ".opus", ".ogg", ".wma", ".mka")
 
 getffprobeCmd = lambda ffprobePath, file: [
     ffprobePath,
