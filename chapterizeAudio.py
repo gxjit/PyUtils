@@ -190,7 +190,10 @@ def getChapters(fileList, metaData, album, ix):
     artist, albumArtist = getTags(
         metaData[fileList[0].name], ["artist", "album_artist"]
     )
-    chapters = f";FFMETADATA1\ntitle={album}\nalbum={album}\ntrack={str(ix+1)}\n"
+    if pargs.split:
+        chapters = f";FFMETADATA1\ntitle={album} - Part {str(i+1)}\nalbum={album}\ntrack={str(ix+1)}\n"
+    else:
+        chapters = f";FFMETADATA1\ntitle={album}\nalbum={album}\ntrack={str(ix+1)}\n"
     if artist or albumArtist:
         chapters += f"artist={albumArtist or artist}\n"
     else:
