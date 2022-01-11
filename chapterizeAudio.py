@@ -18,7 +18,7 @@ def parseArgs():
         else:
             raise argparse.ArgumentTypeError("Invalid Directory path")
 
-    parser = argparse.ArgumentParser(description="Does Stuff.")
+    parser = argparse.ArgumentParser(description="Merge multiple m4a/m4b files into a single file with file names as chapters.")
     parser.add_argument(
         "-d", "--dir", required=True, help="Directory path", type=dirPath
     )
@@ -36,9 +36,9 @@ def parseArgs():
         "--split",
         nargs="?",
         default=None,
-        const=300,
+        const=150,
         type=int,
-        help="Maximum split size in MB for multi-part archive, default is 300 MB",
+        help="Maximum split size in MB for multi-part file, default is 150 MB",
     )
     parser.add_argument(
         "-i",
