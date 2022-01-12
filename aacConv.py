@@ -283,7 +283,9 @@ for file in fileList:
         msg = f"\n\n{str(file.name)}\nWARNING: Mismatched source and output duration.\nSource duration:{sourceDur}\nDestination duration:{outDur}\n"
         diff = int(float(outDur)) - int(float(sourceDur))
         if diff > 1 or diff < 0:
-            msg += "\nWARNING: Source and output durations are significantly different.\n"
+            msg += (
+                "\nWARNING: Source and output durations are significantly different.\n"
+            )
         print(msg)
         with open(logsDir.joinpath(f"{file.stem}.log"), "a") as f:
             f.write(msg)

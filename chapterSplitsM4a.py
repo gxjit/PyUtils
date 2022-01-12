@@ -40,7 +40,10 @@ def parseArgs():
         help="Generate cuesheet .cue instead of splits.",
     )
     parser.add_argument(
-        "-fn", "--fn-tags", action="store_true", help="Infer tags from filenames.",
+        "-fn",
+        "--fn-tags",
+        action="store_true",
+        help="Infer tags from filenames.",
     )
     parser.add_argument(
         "-n",

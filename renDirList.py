@@ -30,7 +30,11 @@ def parseArgs():
         description="Add number count prefixes to filenames based on file and file parent directory ordering."
     )
     parser.add_argument(
-        "-d", "--directory", required=True, help="Directory path", type=dirPath,
+        "-d",
+        "--directory",
+        required=True,
+        help="Directory path",
+        type=dirPath,
     )
     parser.add_argument(
         "-e",
@@ -40,7 +44,10 @@ def parseArgs():
         type=sepExts,
     )
     parser.add_argument(
-        "-s", "--stem", help="Add a stem to number count, ex: STEM001.", type=str,
+        "-s",
+        "--stem",
+        help="Add a stem to number count, ex: STEM001.",
+        type=str,
     )
     parser.add_argument(
         "-y",
@@ -94,7 +101,10 @@ def main(pargs):
 
         print("\n---------------------------------------\n")
         print(
-            "Source File: ", file, "\n\nDestination File: ", destFile,
+            "Source File: ",
+            file,
+            "\n\nDestination File: ",
+            destFile,
         )
         if not pargs.dry:
             file.rename(destFile)

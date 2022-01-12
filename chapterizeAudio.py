@@ -18,7 +18,9 @@ def parseArgs():
         else:
             raise argparse.ArgumentTypeError("Invalid Directory path")
 
-    parser = argparse.ArgumentParser(description="Merge multiple m4a/m4b files into a single file with file names as chapters.")
+    parser = argparse.ArgumentParser(
+        description="Merge multiple m4a/m4b files into a single file with file names as chapters."
+    )
     parser.add_argument(
         "-d", "--dir", required=True, help="Directory path", type=dirPath
     )
@@ -231,7 +233,6 @@ def runCmd(cmd):
     print("\n", cmd[-1])
     subprocess.run(cmd)
     print("\n------------------------------------\n")
-
 
 
 pargs = parseArgs()

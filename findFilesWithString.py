@@ -23,7 +23,11 @@ def parseArgs():
         description="Find files containing specific string."
     )
     parser.add_argument(
-        "-d", "--directory", required=True, help="Directory path", type=dirPath,
+        "-d",
+        "--directory",
+        required=True,
+        help="Directory path",
+        type=dirPath,
     )
     parser.add_argument(
         "-s", "--string", required=True, help="Search string.", type=str
@@ -42,7 +46,10 @@ def parseArgs():
         help="Print specific number of lines above or below the search string.",
     )
     parser.add_argument(
-        "-w", "--down", action="store_true", help="Print lines below the search string",
+        "-w",
+        "--down",
+        action="store_true",
+        help="Print lines below the search string",
     )
 
     pargs = parser.parse_args()

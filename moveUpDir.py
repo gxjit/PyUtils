@@ -105,7 +105,10 @@ def main(pargs):
         destFile = file.parents[1].joinpath(file.name)
         print("\n---------------------------------------\n")
         print(
-            "Source File: ", file, "\nDestination File: ", destFile,
+            "Source File: ",
+            file,
+            "\nDestination File: ",
+            destFile,
         )
         if not pargs.dry:
             shutil.move(file, destFile)

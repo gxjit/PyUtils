@@ -48,7 +48,10 @@ def parseArgs():
         type=sepExts,
     )
     parser.add_argument(
-        "-m", "--move", action="store_true", help=r"Move files insted of copying.",
+        "-m",
+        "--move",
+        action="store_true",
+        help=r"Move files insted of copying.",
     )
     parser.add_argument(
         "-i",

@@ -102,7 +102,6 @@ def runCmd(cmd, dry):
     input("\nPress Enter to continue...")
 
 
-
 addDots = lambda exts: [f".{x}" for x in exts]
 
 
@@ -126,6 +125,7 @@ def getFileListRec(dirPath, exts):
         fList = glob.glob(f"{dirPath}/**/*", recursive=True)
 
     return [pathlib.Path(x) for x in fList]
+
 
 # getFileList = lambda dirPath: [x for x in dirPath.iterdir() if x.is_file()]
 

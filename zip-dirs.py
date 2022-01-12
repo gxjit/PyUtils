@@ -51,7 +51,10 @@ def parseArgs():
         help=r"Use absolute 7z.exe path C:\Program Files\7-Zip\7z.exe",
     )
     parser.add_argument(
-        "-p", "--parent", action="store_true", help=r"Compress parent directory.",
+        "-p",
+        "--parent",
+        action="store_true",
+        help=r"Compress parent directory.",
     )
     pargs = parser.parse_args()
 

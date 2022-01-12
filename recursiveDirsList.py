@@ -3,6 +3,7 @@ import glob
 import pathlib
 import subprocess
 import sys
+import os
 
 
 def parseArgs():
@@ -13,14 +14,8 @@ def parseArgs():
         else:
             raise argparse.ArgumentTypeError("Invalid Directory path")
 
-    def sepExts(exts):
-        if "," in exts:
-            return exts.strip().split(",")
-        else:
-            raise argparse.ArgumentTypeError("Invalid extensions list")
-
     parser = argparse.ArgumentParser(
-        description="Run specified command for subdirectories recursively."
+        description="List(recursively) directories with child files/folders more than N."
     )
     parser.add_argument(
         "-d",
@@ -30,23 +25,17 @@ def parseArgs():
         type=dirPath,
     )
     parser.add_argument(
-        "-c",
-        "--command",
+        "-n",
+        "--number",
         required=True,
-        help="Command to be executed enclosed in commas; $dir will be replaced with directory names iteratively.",
-        type=str,
+        help="Number of files to be more than.",
+        type=int,
     )
     parser.add_argument(
         "-p",
         "--parent",
         action="store_true",
         help=r"Include parent directory.",
-    )
-    parser.add_argument(
-        "-y",
-        "--dry",
-        action="store_true",
-        help=r"Dry run / Don't write anything to the disk.",
     )
 
     pargs = parser.parse_args()
@@ -55,8 +44,6 @@ def parseArgs():
 
 
 getDirListRec = lambda dirPath: glob.glob(f"{dirPath}/*/**/", recursive=True)
-
-# pathifyList = lambda paths: [pathlib.Path(x) for x in paths]
 
 
 def main(pargs):
@@ -73,13 +60,12 @@ def main(pargs):
         dirList.append(str(dirPath))
 
     for each in dirList:
-        cmd = pargs.command.replace("$dir", f'"{each[:-1]}"')
-        print("\n---------------------------------------\n")
-        print(f"Processing Directory: {each}")
-        print(f"\n{cmd}")
-        print("\n---------------------------------------\n")
-        if not pargs.dry:
-            subprocess.run(cmd)
+        num = len(os.listdir(each))
+        if num > pargs.number:
+            print("\n---------------------------------------\n")
+            print(f"Directory: {each}")
+            print(f"\nNumber of Files: {num}")
+            print("\n---------------------------------------\n")
 
 
 main(parseArgs())
