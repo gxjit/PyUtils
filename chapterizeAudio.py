@@ -19,7 +19,7 @@ def parseArgs():
             raise argparse.ArgumentTypeError("Invalid Directory path")
 
     parser = argparse.ArgumentParser(
-        description="Merge multiple m4a/m4b files into a single file with file names as chapters."
+        description="Merge multiple m4a/m4b/mp3 files into a single file with file names as chapters."
     )
     parser.add_argument(
         "-d", "--dir", required=True, help="Directory path", type=dirPath
@@ -105,7 +105,7 @@ def checkPaths(paths):
 
 
 getFileList = lambda dirPath: [
-    f for f in dirPath.iterdir() if f.is_file() and f.suffix in [".m4a", ".m4b"]
+    f for f in dirPath.iterdir() if f.is_file() and f.suffix in [".m4a", ".m4b", ".mp3"]
 ]
 
 
