@@ -63,7 +63,7 @@ def checkPaths(paths):
     return retPaths
 
 
-rate = 64000  # 86000
+rate = 68000  # 86000
 
 ffprobePath = checkPaths({"ffprobe": r"C:\ffmpeg\bin\ffprobe.exe"})[0]
 
