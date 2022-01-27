@@ -63,6 +63,8 @@ def checkPaths(paths):
     return retPaths
 
 
+rate = 64000  # 86000
+
 ffprobePath = checkPaths({"ffprobe": r"C:\ffmpeg\bin\ffprobe.exe"})[0]
 
 audioExts = (".m4a", ".m4b", ".mp3", ".opus", ".ogg", ".wma", ".mka")
@@ -160,7 +162,7 @@ def main(pargs):
                 "streams"
             ][0]["bit_rate"]
 
-            if int(bitRate) > 86000:
+            if int(bitRate) > rate:
                 results(fileObj, bitRate)
 
         except Exception as err:
