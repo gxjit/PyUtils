@@ -17,21 +17,11 @@ def parseArgs():
         else:
             raise argparse.ArgumentTypeError("Invalid Directory path")
 
-    parser = argparse.ArgumentParser(description="Optimize audio file size by encoding to aac.")
+    parser = argparse.ArgumentParser(
+        description="Optimize media file size by encoding to h264/aac."
+    )
     parser.add_argument(
         "-d", "--dir", required=True, help="Directory path", type=dirPath
-    )
-    parser.add_argument(
-        "-m",
-        "--mp3",
-        action="store_true",
-        help="Process mp3/wma files instead of m4a/m4b.",
-    )
-    parser.add_argument(
-        "-s", "--stereo", action="store_true", help="Keep both channels."
-    )
-    parser.add_argument(
-        "-hq", "--hq", action="store_true", help="HQ sample rate/cutoff."
     )
     parser.add_argument(
         "-w",
@@ -88,15 +78,23 @@ def getFileSizes(fileList):
     return totalSize
 
 
-def getTags(metaData, tags):
-    js = metaData["format"]["tags"]
-    return [js.get(tag, "") for tag in tags]
-
-
 def rmEmptyDirs(paths):
     for path in paths:
         if not list(path.iterdir()):
             path.rmdir()
+
+
+def swr(file):
+    print(
+        f"\n\nERROR: Something went wrong while processing following file.\n > {str(file.name)}.\n"
+    )
+
+
+getFileList = lambda dirPath, exts: [
+    f for f in dirPath.iterdir() if f.is_file() and f.suffix in exts
+]
+
+bytesToMB = lambda bytes: math.ceil(bytes / float(1 << 20))
 
 
 getffprobeCmd = lambda ffprobePath, file: [
@@ -110,34 +108,32 @@ getffprobeCmd = lambda ffprobePath, file: [
     str(file),
 ]
 
-getffmpegCmd = lambda ffmpegPath, file, wavOut: [
+getffmpegCmd = lambda ffmpegPath, file, outFile: [
     ffmpegPath,
     "-i",
     str(file),
+    "-c:v",
+    "libx264",
+    "-preset:v",
+    "fast",
+    "-crf",
+    "28",
+    "-vf",
+    "fps=fps=24,scale=-1:480",  # 480 540 720
+    "-c:a",
+    # "libfdk_aac",
+    # "-vbr",
+    # "4",
+    "libmp3lame",
+    "-q:a",
+    "7",
+    "-ar",
+    "32000", # fdk_aac cutoff https://wiki.hydrogenaud.io/index.php?title=Fraunhofer_FDK_AAC#Bandwidth
     "-ac",  # pargs.stereo
     "1",
-    "-f",
-    "wav",
     "-loglevel",
-    "warning",
-    str(wavOut),
-]
-
-getQaacCmd = lambda qaacPath, file, outFile, tmpDir, logsDir: [
-    qaacPath,
-    str(file),
-    "-V",
-    "64",
-    "--rate",
-    "22050",  # 22050, 32000 -> cutoff 11, 16 Khz
-    "--limiter",
-    "--threading",
-    "--tmpdir",
-    str(tmpDir),
-    "--verbose",
-    "--log",
-    str(logsDir.joinpath(f"{file.stem}.log")),
-    "-o",
+    "warning",  # info
+    "-report",
     str(outFile),
 ]
 
@@ -148,34 +144,11 @@ def getMetaData(ffprobePath, file):
     return metaData
 
 
-def getTrackNum(num):
-    if "/" in num:
-        return num.split("/")[0]
-    else:
-        return num
-
-
-getFileList = lambda dirPath, exts: [
-    f for f in dirPath.iterdir() if f.is_file() and f.suffix in exts
-]
-
-bytesToMB = lambda bytes: math.ceil(bytes / float(1 << 20))
-
-
-def swr(file):
-    print(
-        f"\n\nERROR: Something went wrong while processing following file.\n > {str(file.name)}.\n"
-    )
-
+formats = [".mp4", ".avi"]
 
 pargs = parseArgs()
 
 dirPath = pargs.dir.resolve()
-
-if pargs.mp3:
-    formats = [".mp3", ".wma", ".mka"]
-else:
-    formats = [".m4a", ".m4b"]
 
 fileList = getFileList(dirPath, formats)
 
@@ -185,17 +158,15 @@ if not fileList:
 
 oldSize = bytesToMB(getFileSizes(fileList))
 
-qaacPath, ffprobePath, ffmpegPath = checkPaths(
+ffprobePath, ffmpegPath = checkPaths(
     {
-        "qaac64": r"D:\PortableApps\qaac\qaac64.exe",
         "ffprobe": r"C:\ffmpeg\bin\ffprobe.exe",
         "ffmpeg": r"C:\ffmpeg\bin\ffmpeg.exe",
     }
 )
 
-tmpDir, wavDir, outDir, logsDir, dryDir = makeTargetDirs(
-    dirPath, ["tmp", "wav", "out", "logs", "dry"]
-)
+outDir, logsDir, dryDir = makeTargetDirs(dirPath, ["out", "logs", "dry"])
+
 
 procFile = dirPath.joinpath("processed")
 
@@ -203,6 +174,7 @@ if procFile.exists():
     procPointer = open(procFile, "r+")
 else:
     procPointer = open(procFile, "w+")
+
 
 processed = procPointer.read()
 
@@ -217,61 +189,29 @@ for file in fileList:
         break
 
     sourceDur = metaData["streams"][0]["duration"]
-    mono = False if metaData["streams"][0]["channels"] > 1 else True
 
-    outFile = outDir.joinpath(f"{file.stem}.m4a")
-    cmd = getQaacCmd(qaacPath, file, outFile, tmpDir, logsDir)
+    outFile = outDir.joinpath(f"{file.stem}.mp4")
 
-    if pargs.mp3:
-        wavOut = wavDir.joinpath(f"{file.stem}.wav")
-        ffmpegCmd = getffmpegCmd(ffmpegPath, file, wavOut)
-        title, artist, album, album_artist, track, disc = getTags(
-            metaData, ["title", "artist", "album", "album_artist", "track", "disc"]
-        )
-        # track = getTrackNum(track)
+    cmd = getffmpegCmd(ffmpegPath, file, outFile)
 
-        # disc = getTrackNum(disc)
+    os.chdir(dirPath)
+    # ffmpeg doesnt support windows drive letters https://trac.ffmpeg.org/ticket/6399
 
-        cmd[1] = wavOut
-        cmd[10:10] = [
-            f"--artist={artist}",
-            f"--title={title}",
-            f"--album={album}",
-            f"--band={album_artist}",
-            f"--track={track}",
-            f"--disk={disc}",
-        ]
-
-        if pargs.stereo:
-            ffmpegCmd.remove("-ac")
-            ffmpegCmd.remove("1")
-
-        try:
-            subprocess.run(ffmpegCmd, check=True)
-        except subprocess.CalledProcessError:
-            swr(file)
-            break
-
-    if not pargs.mp3 and not mono and not pargs.stereo:
-        cmd[10:10] = ["--matrix-preset", "mono"]
-
-    if pargs.hq:
-        cmd[5] = "32000"
+    ffReport = f"file=./{logsDir.name}/{file.stem}.log:level=24"
+    # relative path have to be used for cross platform compatibility
 
     try:
-        subprocess.run(cmd, check=True)
+        subprocess.run(cmd, check=True, env={"FFREPORT": ffReport})
     except subprocess.CalledProcessError:
         swr(file)
         break
 
     dryFile = dryDir.joinpath(file.name)
     file.rename(dryFile)
-    outFile.rename(f"{str(file)[:-4]}.m4a")
-    if pargs.mp3:
-        wavOut.unlink()
+    outFile.rename(f"{str(file)[:-4]}.mp4")
 
     try:
-        metaData = getMetaData(ffprobePath, f"{str(file)[:-4]}.m4a")
+        metaData = getMetaData(ffprobePath, f"{str(file)[:-4]}.mp4")
     except subprocess.CalledProcessError:
         swr(file)
         break
@@ -298,7 +238,7 @@ for file in fileList:
         if choice == "e":
             break
 
-newSize = bytesToMB(getFileSizes(getFileList(dirPath, [".m4a"])))
+newSize = bytesToMB(getFileSizes(getFileList(dirPath, [".mp4"])))
 
 with open(logsDir.joinpath(f"{dirPath.name}.log"), "a") as f:
     msg = f"\n\nOld size: {oldSize} MB\nNew Size: {newSize} MB"
@@ -315,4 +255,13 @@ if procFile.stat().st_size == 0 or not notProcessed:
     procFile.unlink()
 
 
-rmEmptyDirs([tmpDir, outDir, wavDir, dryDir, logsDir])
+rmEmptyDirs([outDir, dryDir, logsDir])
+
+
+#  Some codecs require the size of width and height to be a multiple of n. You can achieve this by setting the width or height to -n:
+
+# ffmpeg -i input.jpg -vf scale=320:-2 output_320.png
+
+
+# switch audio encoders bw lame fdk_aac
+# switch video resolution
