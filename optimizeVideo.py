@@ -18,7 +18,7 @@ def parseArgs():
             raise argparse.ArgumentTypeError("Invalid Directory path")
 
     parser = argparse.ArgumentParser(
-        description="Optimize media file size by encoding to h264/aac."
+        description="Optimize media file size by encoding to h264/aac/mp3."
     )
     parser.add_argument(
         "-d", "--dir", required=True, help="Directory path", type=dirPath
@@ -32,7 +32,21 @@ def parseArgs():
         type=int,
         help="Wait time in seconds between each iteration, default is 10",
     )
-
+    parser.add_argument(
+        "-a",
+        "--aac",
+        action="store_true",
+        help="Use fdk aac encoder instead of LAME mp3.",
+    )
+    # parser.add_argument(
+    #     "-r",
+    #     "--res",
+    #     action="store_true",
+    #     default=None,
+    #     const=720,
+    #     type=int,
+    #     help="Video resolution.",
+    # )
     return parser.parse_args()
 
 
@@ -128,7 +142,7 @@ getffmpegCmd = lambda ffmpegPath, file, outFile: [
     "-q:a",
     "7",
     "-ar",
-    "32000", # fdk_aac cutoff https://wiki.hydrogenaud.io/index.php?title=Fraunhofer_FDK_AAC#Bandwidth
+    "32000",  # fdk_aac cutoff https://wiki.hydrogenaud.io/index.php?title=Fraunhofer_FDK_AAC#Bandwidth
     "-ac",  # pargs.stereo
     "1",
     "-loglevel",
@@ -193,6 +207,11 @@ for file in fileList:
     outFile = outDir.joinpath(f"{file.stem}.mp4")
 
     cmd = getffmpegCmd(ffmpegPath, file, outFile)
+
+    if pargs.aac:
+        cmd[13] = "libfdk_aac"
+        cmd[14] = "-vbr"
+        cmd[15] = "4"
 
     os.chdir(dirPath)
     # ffmpeg doesnt support windows drive letters https://trac.ffmpeg.org/ticket/6399
@@ -263,5 +282,8 @@ rmEmptyDirs([outDir, dryDir, logsDir])
 # ffmpeg -i input.jpg -vf scale=320:-2 output_320.png
 
 
-# switch audio encoders bw lame fdk_aac
 # switch video resolution
+
+
+# H264 fast encoding widespread support > VP9 high efficiency low file sizes Slow encoding medicore support > AV1 higher efficiency lower file sizes slower encoding little support
+# Apple aac/qaac > fdk_aac > LAME > ffmpeg native aac
