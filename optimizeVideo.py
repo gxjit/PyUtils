@@ -144,8 +144,8 @@ getffmpegCmd = lambda ffmpegPath, file, outFile, res, speed: [
     "-q:a",
     "7",
     "-ar",
-    "32000",  # fdk_aac cutoff https://wiki.hydrogenaud.io/index.php?title=Fraunhofer_FDK_AAC#Bandwidth
-    "-ac",  # pargs.stereo
+    "32000",  # or 22050
+    "-ac",  # pargs.stereo?
     "1",
     "-loglevel",
     "warning",  # info
@@ -214,7 +214,9 @@ for file in fileList:
     if pargs.aac:
         cmd[12] = "libfdk_aac"
         cmd[13] = "-vbr"
-        cmd[14] = "3"
+        cmd[14] = "3"  # LPF for 3, 4 around 14260Hz, 15500Hz
+        # fdk_aac LPF cutoff https://wiki.hydrogenaud.io/index.php?title=Fraunhofer_FDK_AAC#Bandwidth
+        cmd[15:15] = ["-afterburner", "1"]
 
     os.chdir(dirPath)
     # ffmpeg doesnt support windows drive letters https://trac.ffmpeg.org/ticket/6399
@@ -288,7 +290,6 @@ rmEmptyDirs([outDir, dryDir, logsDir])
 # Apple aac/qaac > fdk_aac > LAME > ffmpeg native aac
 
 # source bitrate config check
-
 
 # ffReport = (f"file={str(logsDir.joinpath(file.stem))}.log:level=24").replace(
 #     ":", "\\:", 1
