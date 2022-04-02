@@ -148,11 +148,11 @@ def getMetaData(ffprobePath, file):
     return metaData
 
 
-def getTrackNum(num):
-    if "/" in num:
-        return num.split("/")[0]
-    else:
-        return num
+# def getTrackNum(num):
+#     if "/" in num:
+#         return num.split("/")[0]
+#     else:
+#         return num
 
 
 getFileList = lambda dirPath, exts: [
@@ -316,3 +316,6 @@ if procFile.stat().st_size == 0 or not notProcessed:
 
 
 rmEmptyDirs([tmpDir, outDir, wavDir, dryDir, logsDir])
+
+
+# default to hq with lq switch

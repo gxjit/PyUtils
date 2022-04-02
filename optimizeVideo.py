@@ -38,15 +38,20 @@ def parseArgs():
         action="store_true",
         help="Use fdk aac encoder instead of LAME mp3.",
     )
-    # parser.add_argument(
-    #     "-r",
-    #     "--res",
-    #     action="store_true",
-    #     default=None,
-    #     const=720,
-    #     type=int,
-    #     help="Video resolution.",
-    # )
+    parser.add_argument(
+        "-r",
+        "--res",
+        default=540,
+        type=int,
+        help="Video resolution; can be 360, 480, 540, 720, etc.(default: 540)",
+    )
+    parser.add_argument(
+        "-s",
+        "--speed",
+        default="medium",
+        type=str,
+        help="Encoding speed; can be medium, fast, veryfast, etc.(default: medium)",
+    )
     return parser.parse_args()
 
 
@@ -122,22 +127,19 @@ getffprobeCmd = lambda ffprobePath, file: [
     str(file),
 ]
 
-getffmpegCmd = lambda ffmpegPath, file, outFile: [
+getffmpegCmd = lambda ffmpegPath, file, outFile, res, speed: [
     ffmpegPath,
     "-i",
     str(file),
     "-c:v",
     "libx264",
     "-preset:v",
-    "fast",
+    speed,
     "-crf",
     "28",
     "-vf",
-    "fps=fps=24,scale=-1:480",  # 480 540 720
+    f"fps=fps=24,scale=-1:{str(res)}",
     "-c:a",
-    # "libfdk_aac",
-    # "-vbr",
-    # "4",
     "libmp3lame",
     "-q:a",
     "7",
@@ -159,6 +161,8 @@ def getMetaData(ffprobePath, file):
 
 
 formats = [".mp4", ".avi"]
+
+outExt = "mp4"
 
 pargs = parseArgs()
 
@@ -189,7 +193,6 @@ if procFile.exists():
 else:
     procPointer = open(procFile, "w+")
 
-
 processed = procPointer.read()
 
 for file in fileList:
@@ -204,14 +207,14 @@ for file in fileList:
 
     sourceDur = metaData["streams"][0]["duration"]
 
-    outFile = outDir.joinpath(f"{file.stem}.mp4")
+    outFile = outDir.joinpath(f"{file.stem}.{outExt}")
 
-    cmd = getffmpegCmd(ffmpegPath, file, outFile)
+    cmd = getffmpegCmd(ffmpegPath, file, outFile, pargs.res, pargs.speed)
 
     if pargs.aac:
-        cmd[13] = "libfdk_aac"
-        cmd[14] = "-vbr"
-        cmd[15] = "4"
+        cmd[12] = "libfdk_aac"
+        cmd[13] = "-vbr"
+        cmd[14] = "3"
 
     os.chdir(dirPath)
     # ffmpeg doesnt support windows drive letters https://trac.ffmpeg.org/ticket/6399
@@ -227,10 +230,10 @@ for file in fileList:
 
     dryFile = dryDir.joinpath(file.name)
     file.rename(dryFile)
-    outFile.rename(f"{str(file)[:-4]}.mp4")
+    outFile.rename(f"{str(file)[:-4]}.{outExt}")
 
     try:
-        metaData = getMetaData(ffprobePath, f"{str(file)[:-4]}.mp4")
+        metaData = getMetaData(ffprobePath, f"{str(file)[:-4]}.{outExt}")
     except subprocess.CalledProcessError:
         swr(file)
         break
@@ -257,7 +260,7 @@ for file in fileList:
         if choice == "e":
             break
 
-newSize = bytesToMB(getFileSizes(getFileList(dirPath, [".mp4"])))
+newSize = bytesToMB(getFileSizes(getFileList(dirPath, [f".{outExt}"])))
 
 with open(logsDir.joinpath(f"{dirPath.name}.log"), "a") as f:
     msg = f"\n\nOld size: {oldSize} MB\nNew Size: {newSize} MB"
@@ -278,12 +281,16 @@ rmEmptyDirs([outDir, dryDir, logsDir])
 
 
 #  Some codecs require the size of width and height to be a multiple of n. You can achieve this by setting the width or height to -n:
-
 # ffmpeg -i input.jpg -vf scale=320:-2 output_320.png
-
-
-# switch video resolution
 
 
 # H264 fast encoding widespread support > VP9 high efficiency low file sizes Slow encoding medicore support > AV1 higher efficiency lower file sizes slower encoding little support
 # Apple aac/qaac > fdk_aac > LAME > ffmpeg native aac
+
+# source bitrate config check
+
+
+# ffReport = (f"file={str(logsDir.joinpath(file.stem))}.log:level=24").replace(
+#     ":", "\\:", 1
+# )
+# https://ffmpeg.org/ffmpeg-utils.html#Quoting-and-escaping
