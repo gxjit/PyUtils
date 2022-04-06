@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import time
+import traceback
 
 
 def parseArgs():
@@ -102,6 +103,10 @@ def rmEmptyDirs(paths):
         if not list(path.iterdir()):
             path.rmdir()
 
+def rmNonEmptyDirs(paths):
+    for path in paths:
+        shutil.rmtree(path)
+
 def appendFile(file, contents):
     with open(file, 'a') as f:
         f.write(contents)
@@ -110,10 +115,13 @@ def readFile(file):
     with open(file, 'r') as f:
         return f.read()
 
-def swr(file):
+def swr(file, exp=None):
     print(
         f"\n\nERROR: Something went wrong while processing following file.\n > {str(file.name)}.\n"
     )
+    if exp:
+        print(f"Exception:\n{exp}\n")
+        print(f"Additional Details:\n{traceback.format_exc()}")
 
 
 getFileList = lambda dirPath, exts: [
@@ -167,18 +175,10 @@ def getMetaData(ffprobePath, file):
     ffprobeCmd = getffprobeCmd(ffprobePath, file)
     try:
         metaData = json.loads(subprocess.check_output(ffprobeCmd).decode("utf-8"))
-    except subprocess.CalledProcessError as callErr:
-        swr(file)
+    except Exception as callErr:
+        swr(file, callErr)
         return callErr
     return metaData
-
-def cleanExit(dirs, procFile, fileList):
-    rmEmptyDirs(dirs)
-    processed = readFile(procFile)
-    notProcessed = [f for f in fileList if str(f) not in processed]
-    if procFile.stat().st_size == 0 or not notProcessed:
-        procFile.unlink()
-    sys.exit()
 
 formats = [".mp4", ".avi"]
 
@@ -204,7 +204,7 @@ ffprobePath, ffmpegPath = checkPaths(
 )
 
 outDir, logsDir, dryDir = makeTargetDirs(dirPath, ["out", "logs", "dry"])
-dirs = [outDir, dryDir, logsDir]
+
 procFile = dirPath.joinpath("processed")
 processed = None
 
@@ -276,7 +276,17 @@ for file in fileList:
         if choice == "e":
             break
 
-cleanExit(dirs, procFile, fileList)
+rmNonEmptyDirs([outDir])
+rmEmptyDirs([logsDir, dryDir])
+processed = readFile(procFile)
+notProcessed = [f for f in fileList if str(f) not in processed]
+if procFile.stat().st_size == 0 or not notProcessed:
+    procFile.unlink()
+
+# sys.exit()
+# def cleanExit(dirs, procFile, fileList, neDir=None):
+    if neDir:
+# cleanExit([outDir, logsDir, dryDir], procFile, fileList, outDir)
 
 # def writeSizes()
 #     newSize = bytesToMB(getFileSizes(getFileList(dirPath, [f".{outExt}"])))
