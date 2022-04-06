@@ -48,9 +48,9 @@ def parseArgs():
     parser.add_argument(
         "-s",
         "--speed",
-        default="medium",
+        default="slow",
         type=str,
-        help="Encoding speed; can be medium, fast, veryfast, etc.(default: medium)",
+        help="Encoding speed; can be slow, medium, fast, veryfast, etc.(default: slow)(use ultrafast for testing)",
     )
     return parser.parse_args()
 
@@ -102,6 +102,13 @@ def rmEmptyDirs(paths):
         if not list(path.iterdir()):
             path.rmdir()
 
+def appendFile(file, contents):
+    with open(file, 'a') as f:
+        f.write(contents)
+
+def readFile(file):
+    with open(file, 'r') as f:
+        return f.read()
 
 def swr(file):
     print(
@@ -110,7 +117,7 @@ def swr(file):
 
 
 getFileList = lambda dirPath, exts: [
-    f for f in dirPath.iterdir() if f.is_file() and f.suffix in exts
+    f for f in dirPath.iterdir() if f.is_file() and f.suffix.lower() in exts
 ]
 
 bytesToMB = lambda bytes: math.ceil(bytes / float(1 << 20))
@@ -138,11 +145,13 @@ getffmpegCmd = lambda ffmpegPath, file, outFile, res, speed: [
     "-crf",
     "28",
     "-vf",
-    f"fps=fps=24,scale=-1:{str(res)}",
+    f"scale=-1:{str(res)}",  # fps=fps=24, only for higher framerates
     "-c:a",
     "libmp3lame",
     "-q:a",
     "7",
+    "-cutoff",
+    "15500",
     "-ar",
     "32000",  # or 22050
     "-ac",  # pargs.stereo?
@@ -187,16 +196,16 @@ outDir, logsDir, dryDir = makeTargetDirs(dirPath, ["out", "logs", "dry"])
 
 
 procFile = dirPath.joinpath("processed")
+processed = None
 
 if procFile.exists():
-    procPointer = open(procFile, "r+")
+    processed = readFile(procFile)
 else:
-    procPointer = open(procFile, "w+")
+    procFile.touch()
 
-processed = procPointer.read()
 
 for file in fileList:
-    if str(file) in processed:
+    if processed and str(file) in processed:
         continue
 
     try:
@@ -213,8 +222,8 @@ for file in fileList:
 
     if pargs.aac:
         cmd[12] = "libfdk_aac"
-        cmd[13] = "-vbr"
-        cmd[14] = "3"  # LPF for 3, 4 around 14260Hz, 15500Hz
+        cmd[13] = "-b:a"
+        cmd[14] = "72k"  # LPF for 3, 4 around 14260Hz, 15500Hz
         # fdk_aac LPF cutoff https://wiki.hydrogenaud.io/index.php?title=Fraunhofer_FDK_AAC#Bandwidth
         cmd[15:15] = ["-afterburner", "1"]
 
@@ -240,7 +249,7 @@ for file in fileList:
         swr(file)
         break
 
-    procPointer.write(f"\n{str(file)}")
+    appendFile(procFile, f"\n{str(file)}")
 
     outDur = metaData["streams"][0]["duration"]
     if int(float(sourceDur)) != int(float(outDur)):
@@ -269,9 +278,7 @@ with open(logsDir.joinpath(f"{dirPath.name}.log"), "a") as f:
     print(msg)
     f.write(msg)
 
-procPointer.seek(0, 0)
-processed = procPointer.read()
-procPointer.close()
+processed = readFile(procFile)
 
 notProcessed = [f for f in fileList if str(f) not in processed]
 
@@ -282,16 +289,7 @@ if procFile.stat().st_size == 0 or not notProcessed:
 rmEmptyDirs([outDir, dryDir, logsDir])
 
 
-#  Some codecs require the size of width and height to be a multiple of n. You can achieve this by setting the width or height to -n:
-# ffmpeg -i input.jpg -vf scale=320:-2 output_320.png
-
-
 # H264 fast encoding widespread support > VP9 high efficiency low file sizes Slow encoding medicore support > AV1 higher efficiency lower file sizes slower encoding little support
 # Apple aac/qaac > fdk_aac > LAME > ffmpeg native aac
 
-# source bitrate config check
 
-# ffReport = (f"file={str(logsDir.joinpath(file.stem))}.log:level=24").replace(
-#     ":", "\\:", 1
-# )
-# https://ffmpeg.org/ffmpeg-utils.html#Quoting-and-escaping
