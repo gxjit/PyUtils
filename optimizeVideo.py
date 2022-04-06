@@ -56,6 +56,15 @@ def parseArgs():
     return parser.parse_args()
 
 
+def waitN(n):
+    for i in reversed(range(0, n)):
+        print(
+            f"{i}  ", end="\r", flush=True
+        )  # additional spaces are for clearing digits left from multi digit coundown
+        time.sleep(1)
+    print("\r")
+
+
 def makeTargetDirs(dirPath, names):
     retNames = []
     for name in names:
@@ -103,25 +112,48 @@ def rmEmptyDirs(paths):
         if not list(path.iterdir()):
             path.rmdir()
 
+
 def rmNonEmptyDirs(paths):
     for path in paths:
         shutil.rmtree(path)
 
+
 def appendFile(file, contents):
-    with open(file, 'a') as f:
-        f.write(contents)
+    # if not file.exists():
+    #     file.touch()
+    with open(file, "a") as f:
+        f.write(str(contents))
+
 
 def readFile(file):
-    with open(file, 'r') as f:
+    with open(file, "r") as f:
         return f.read()
 
-def swr(file, exp=None):
-    print(
-        f"\n\nERROR: Something went wrong while processing following file.\n > {str(file.name)}.\n"
+
+def printNLog(logFile, msg):
+    print(str(msg))
+    appendFile(logFile, msg)
+
+
+def swr(currFile, logFile, exp=None):
+    printNLog(
+        logFile,
+        f"\n------\nERROR: Something went wrong while processing following file.\n > {str(currFile.name)}.\n",
     )
     if exp:
-        print(f"Exception:\n{exp}\n")
-        print(f"Additional Details:\n{traceback.format_exc()}")
+        printNLog(
+            logFile,
+            f"Exception:\n{exp}\n\nAdditional Details:\n{traceback.format_exc()}",
+        )
+
+
+def runCmd(cmd, currFile, logFile):
+    try:
+        cmdOut = subprocess.check_output(cmd).decode("utf-8")
+    except Exception as callErr:
+        swr(currFile, logFile, callErr)
+        return callErr
+    return cmdOut
 
 
 getFileList = lambda dirPath, exts: [
@@ -137,7 +169,7 @@ getffprobeCmd = lambda ffprobePath, file: [
     "quiet",
     "-print_format",
     "json",
-    "-show_format",
+    # "-show_format",
     "-show_streams",
     str(file),
 ]
@@ -166,19 +198,18 @@ getffmpegCmd = lambda ffmpegPath, file, outFile, res, speed: [
     "1",
     "-loglevel",
     "warning",  # info
-    "-report",
     str(outFile),
 ]
 
 
-def getMetaData(ffprobePath, file):
-    ffprobeCmd = getffprobeCmd(ffprobePath, file)
-    try:
-        metaData = json.loads(subprocess.check_output(ffprobeCmd).decode("utf-8"))
-    except Exception as callErr:
-        swr(file, callErr)
-        return callErr
+def getMetaData(ffprobePath, currFile, logFile):
+    ffprobeCmd = getffprobeCmd(ffprobePath, currFile)
+    cmdOut = runCmd(ffprobeCmd, currFile, logFile)
+    if isinstance(cmdOut, Exception):
+        return cmdOut
+    metaData = json.loads(cmdOut)
     return metaData
+
 
 formats = [".mp4", ".avi"]
 
@@ -204,20 +235,20 @@ ffprobePath, ffmpegPath = checkPaths(
 )
 
 outDir, logsDir, dryDir = makeTargetDirs(dirPath, ["out", "logs", "dry"])
-
+logFile = logsDir.joinpath(f"{dirPath.stem}.log")
 procFile = dirPath.joinpath("processed")
 processed = None
 
 if procFile.exists():
     processed = readFile(procFile)
-else:
-    procFile.touch()
+# else:
+#     procFile.touch()
 
 for file in fileList:
     if processed and str(file) in processed:
         continue
 
-    metaData = getMetaData(ffprobePath, file)
+    metaData = getMetaData(ffprobePath, file, logFile)
     if isinstance(metaData, Exception):
         break
 
@@ -234,23 +265,15 @@ for file in fileList:
         # fdk_aac LPF cutoff https://wiki.hydrogenaud.io/index.php?title=Fraunhofer_FDK_AAC#Bandwidth
         cmd[15:15] = ["-afterburner", "1"]
 
-    os.chdir(dirPath)
-    # ffmpeg doesnt support windows drive letters https://trac.ffmpeg.org/ticket/6399
-
-    ffReport = f"file=./{logsDir.name}/{file.stem}.log:level=24"
-    # relative path have to be used for cross platform compatibility
-
-    try:
-        subprocess.run(cmd, check=True, env={"FFREPORT": ffReport})
-    except subprocess.CalledProcessError:
-        swr(file)
+    cmdOut = runCmd(cmd, file, logFile)
+    if isinstance(cmdOut, Exception):
         break
-
+    printNLog(logFile, cmdOut)
     dryFile = dryDir.joinpath(file.name)
     file.rename(dryFile)
-    outFile.rename(f"{str(file)[:-4]}.{outExt}")
+    outFile.rename(file)
 
-    metaData = getMetaData(ffprobePath, f"{str(file)[:-4]}.{outExt}")
+    metaData = getMetaData(ffprobePath, file, logFile)
     if isinstance(metaData, Exception):
         break
 
@@ -264,20 +287,19 @@ for file in fileList:
             msg += (
                 "\nWARNING: Source and output durations are significantly different.\n"
             )
-        print(msg)
-        with open(logsDir.joinpath(f"{file.stem}.log"), "a") as f:
-            f.write(msg)
+        printNLog(logFile, msg)
 
     if pargs.wait:
         print(f"\nWaiting for {str(pargs.wait)} seconds.\n>")
-        time.sleep(int(pargs.wait))
+        # time.sleep(int(pargs.wait))
+        waitN(int(pargs.wait))
     else:
         choice = getInput()
         if choice == "e":
             break
 
-rmNonEmptyDirs([outDir])
-rmEmptyDirs([logsDir, dryDir])
+# rmNonEmptyDirs([outDir])
+rmEmptyDirs([outDir, logsDir, dryDir])
 processed = readFile(procFile)
 notProcessed = [f for f in fileList if str(f) not in processed]
 if procFile.stat().st_size == 0 or not notProcessed:
@@ -285,7 +307,7 @@ if procFile.stat().st_size == 0 or not notProcessed:
 
 # sys.exit()
 # def cleanExit(dirs, procFile, fileList, neDir=None):
-    if neDir:
+# if neDir:
 # cleanExit([outDir, logsDir, dryDir], procFile, fileList, outDir)
 
 # def writeSizes()
@@ -297,12 +319,5 @@ if procFile.stat().st_size == 0 or not notProcessed:
 #         f.write(msg)
 
 
-
-
-
-
-
 # H264 fast encoding widespread support > VP9 high efficiency low file sizes Slow encoding medicore support > AV1 higher efficiency lower file sizes slower encoding little support
 # Apple aac/qaac > fdk_aac > LAME > ffmpeg native aac
-
-
