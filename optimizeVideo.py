@@ -145,7 +145,7 @@ getffmpegCmd = lambda ffmpegPath, file, outFile, res, speed: [
     "-crf",
     "28",
     "-vf",
-    f"scale=-1:{str(res)}",  # fps=fps=24, only for higher framerates
+    f"scale=-1:{str(res)}",
     "-c:a",
     "libmp3lame",
     "-q:a",
@@ -165,9 +165,20 @@ getffmpegCmd = lambda ffmpegPath, file, outFile, res, speed: [
 
 def getMetaData(ffprobePath, file):
     ffprobeCmd = getffprobeCmd(ffprobePath, file)
-    metaData = json.loads(subprocess.check_output(ffprobeCmd).decode("utf-8"))
+    try:
+        metaData = json.loads(subprocess.check_output(ffprobeCmd).decode("utf-8"))
+    except subprocess.CalledProcessError as callErr:
+        swr(file)
+        return callErr
     return metaData
 
+def cleanExit(dirs, procFile, fileList):
+    rmEmptyDirs(dirs)
+    processed = readFile(procFile)
+    notProcessed = [f for f in fileList if str(f) not in processed]
+    if procFile.stat().st_size == 0 or not notProcessed:
+        procFile.unlink()
+    sys.exit()
 
 formats = [".mp4", ".avi"]
 
@@ -193,8 +204,7 @@ ffprobePath, ffmpegPath = checkPaths(
 )
 
 outDir, logsDir, dryDir = makeTargetDirs(dirPath, ["out", "logs", "dry"])
-
-
+dirs = [outDir, dryDir, logsDir]
 procFile = dirPath.joinpath("processed")
 processed = None
 
@@ -203,15 +213,12 @@ if procFile.exists():
 else:
     procFile.touch()
 
-
 for file in fileList:
     if processed and str(file) in processed:
         continue
 
-    try:
-        metaData = getMetaData(ffprobePath, file)
-    except subprocess.CalledProcessError:
-        swr(file)
+    metaData = getMetaData(ffprobePath, file)
+    if isinstance(metaData, Exception):
         break
 
     sourceDur = metaData["streams"][0]["duration"]
@@ -223,7 +230,7 @@ for file in fileList:
     if pargs.aac:
         cmd[12] = "libfdk_aac"
         cmd[13] = "-b:a"
-        cmd[14] = "72k"  # LPF for 3, 4 around 14260Hz, 15500Hz
+        cmd[14] = "72k"
         # fdk_aac LPF cutoff https://wiki.hydrogenaud.io/index.php?title=Fraunhofer_FDK_AAC#Bandwidth
         cmd[15:15] = ["-afterburner", "1"]
 
@@ -243,10 +250,8 @@ for file in fileList:
     file.rename(dryFile)
     outFile.rename(f"{str(file)[:-4]}.{outExt}")
 
-    try:
-        metaData = getMetaData(ffprobePath, f"{str(file)[:-4]}.{outExt}")
-    except subprocess.CalledProcessError:
-        swr(file)
+    metaData = getMetaData(ffprobePath, f"{str(file)[:-4]}.{outExt}")
+    if isinstance(metaData, Exception):
         break
 
     appendFile(procFile, f"\n{str(file)}")
@@ -271,22 +276,20 @@ for file in fileList:
         if choice == "e":
             break
 
-newSize = bytesToMB(getFileSizes(getFileList(dirPath, [f".{outExt}"])))
+cleanExit(dirs, procFile, fileList)
 
-with open(logsDir.joinpath(f"{dirPath.name}.log"), "a") as f:
-    msg = f"\n\nOld size: {oldSize} MB\nNew Size: {newSize} MB"
-    print(msg)
-    f.write(msg)
+# def writeSizes()
+#     newSize = bytesToMB(getFileSizes(getFileList(dirPath, [f".{outExt}"])))
 
-processed = readFile(procFile)
-
-notProcessed = [f for f in fileList if str(f) not in processed]
-
-if procFile.stat().st_size == 0 or not notProcessed:
-    procFile.unlink()
+#     with open(logsDir.joinpath(f"{dirPath.name}.log"), "a") as f:
+#         msg = f"\n\nOld size: {oldSize} MB\nNew Size: {newSize} MB"
+#         print(msg)
+#         f.write(msg)
 
 
-rmEmptyDirs([outDir, dryDir, logsDir])
+
+
+
 
 
 # H264 fast encoding widespread support > VP9 high efficiency low file sizes Slow encoding medicore support > AV1 higher efficiency lower file sizes slower encoding little support
