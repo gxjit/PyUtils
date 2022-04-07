@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 import traceback
+from datetime import datetime
 
 
 def parseArgs():
@@ -60,7 +61,7 @@ def waitN(n):
     for i in reversed(range(0, n)):
         print(
             f"{i}  ", end="\r", flush=True
-        )  # additional spaces are for clearing digits left from multi digit coundown
+        )  # spaces for clearing digits left from multi digit coundown
         time.sleep(1)
     print("\r")
 
@@ -138,18 +139,21 @@ def printNLog(logFile, msg):
 def swr(currFile, logFile, exp=None):
     printNLog(
         logFile,
-        f"\n------\nERROR: Something went wrong while processing following file.\n > {str(currFile.name)}.\n",
+        f"\n------\nERROR: Something went wrong while processing following file.\n > {str(currFile.name)}.",
     )
+    if exp and exp.stderr:
+        printNLog(logFile, f"\nStdErr: {exp.stderr}\nReturn Code: {exp.returncode}")
     if exp:
         printNLog(
             logFile,
-            f"Exception:\n{exp}\n\nAdditional Details:\n{traceback.format_exc()}",
+            f"\nException:\n{exp}\n\nAdditional Details:\n{traceback.format_exc()}",
         )
 
 
 def runCmd(cmd, currFile, logFile):
     try:
-        cmdOut = subprocess.check_output(cmd).decode("utf-8")
+        cmdOut = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        cmdOut = cmdOut.stdout
     except Exception as callErr:
         swr(currFile, logFile, callErr)
         return callErr
@@ -211,6 +215,29 @@ def getMetaData(ffprobePath, currFile, logFile):
     return metaData
 
 
+def PlFileInfo(file, logFile):
+    printNLog(
+        logFile,
+        f"\n----------------\nProcessing file: {str(file.name)} at {str(datetime.now())}",
+    )
+
+
+def PlFileDone(file, logFile):
+    printNLog(
+        logFile,
+        f"\n----------------\nDone Processing: {str(file.name)} at {str(datetime.now())}",
+    )
+
+
+# getParams = lambda metaData, params: [metaData["streams"][0][param] for param in params]
+
+# dur, bitR, codec, height, frRate
+
+# def prinLogMeta(metaData, logFile):
+
+# codec_name "height" "bit_rate" "r_frame_rate" "avg_frame_rate" 30000/1001
+# 1 codec_name "bit_rate" "channels" "bit_rate"
+
 formats = [".mp4", ".avi"]
 
 outExt = "mp4"
@@ -265,15 +292,16 @@ for file in fileList:
         # fdk_aac LPF cutoff https://wiki.hydrogenaud.io/index.php?title=Fraunhofer_FDK_AAC#Bandwidth
         cmd[15:15] = ["-afterburner", "1"]
 
+    PlFileInfo(file, logFile)
     cmdOut = runCmd(cmd, file, logFile)
     if isinstance(cmdOut, Exception):
         break
     printNLog(logFile, cmdOut)
     dryFile = dryDir.joinpath(file.name)
     file.rename(dryFile)
-    outFile.rename(file)
+    outFile.rename(f"{str(file)[:-4]}.{outExt}")
 
-    metaData = getMetaData(ffprobePath, file, logFile)
+    metaData = getMetaData(ffprobePath, f"{str(file)[:-4]}.{outExt}", logFile)  # fix
     if isinstance(metaData, Exception):
         break
 
@@ -289,8 +317,10 @@ for file in fileList:
             )
         printNLog(logFile, msg)
 
+    PlFileDone(file, logFile)
+
     if pargs.wait:
-        print(f"\nWaiting for {str(pargs.wait)} seconds.\n>")
+        print(f"\nWaiting for {str(pargs.wait)} seconds.")
         # time.sleep(int(pargs.wait))
         waitN(int(pargs.wait))
     else:
@@ -320,4 +350,4 @@ if procFile.stat().st_size == 0 or not notProcessed:
 
 
 # H264 fast encoding widespread support > VP9 high efficiency low file sizes Slow encoding medicore support > AV1 higher efficiency lower file sizes slower encoding little support
-# Apple aac/qaac > fdk_aac > LAME > ffmpeg native aac
+# lbopus > Apple aac/qaac > fdk_aac > LAME > ffmpeg native aac
