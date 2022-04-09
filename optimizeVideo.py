@@ -1,4 +1,5 @@
 import argparse
+import atexit
 import json
 import math
 import os
@@ -266,6 +267,15 @@ logFile = logsDir.joinpath(f"{dirPath.stem}.log")
 procFile = dirPath.joinpath("processed")
 processed = None
 
+@atexit.register
+def cleanExit():  # currFile / outFile
+    rmEmptyDirs([outDir, logsDir, dryDir])
+    processed = readFile(procFile)
+    notProcessed = [f for f in fileList if str(f) not in processed]
+    if procFile.stat().st_size == 0 or not notProcessed:
+        procFile.unlink()
+
+
 if procFile.exists():
     processed = readFile(procFile)
 # else:
@@ -329,11 +339,6 @@ for file in fileList:
             break
 
 # rmNonEmptyDirs([outDir])
-rmEmptyDirs([outDir, logsDir, dryDir])
-processed = readFile(procFile)
-notProcessed = [f for f in fileList if str(f) not in processed]
-if procFile.stat().st_size == 0 or not notProcessed:
-    procFile.unlink()
 
 # sys.exit()
 # def cleanExit(dirs, procFile, fileList, neDir=None):
