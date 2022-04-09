@@ -58,6 +58,9 @@ def parseArgs():
     return parser.parse_args()
 
 
+currDTime = lambda: datetime.now().strftime("%y%m%d-%H%M%S")
+
+
 def waitN(n):
     for i in reversed(range(0, n)):
         print(
@@ -113,11 +116,6 @@ def rmEmptyDirs(paths):
     for path in paths:
         if not list(path.iterdir()):
             path.rmdir()
-
-
-def rmNonEmptyDirs(paths):
-    for path in paths:
-        shutil.rmtree(path)
 
 
 def appendFile(file, contents):
@@ -215,29 +213,34 @@ def getMetaData(ffprobePath, currFile, logFile):
     metaData = json.loads(cmdOut)
     return metaData
 
+getParams = lambda metaData, strm, params: {param: metaData["streams"][strm][param] for param in params}
 
-def PlFileInfo(file, logFile):
+def mapMeta(metaData):
+    params = ["codec_type", "codec_name", "duration", "bit_rate"]
+    vdoParams = getParams(metaData, 0, [*params, "height", "r_frame_rate"])
+    adoParams = getParams(metaData, 1, [*params, "channels", "sample_rate"])
+    vdoParams["bit_rate"] = str(int(vdoParams["bit_rate"]) / 1000) #
+    return vdoParams, adoParams
+
+formatParams = lambda params: "".join([f"{param}: {value}; " for param, value in params.items()])
+
+def statusInfo(status, file, logFile):
     printNLog(
         logFile,
-        f"\n----------------\nProcessing file: {str(file.name)} at {str(datetime.now())}",
+        f"\n----------------\n{status} file: {str(file.name)} at {str(datetime.now())}",
     )
 
 
-def PlFileDone(file, logFile):
-    printNLog(
-        logFile,
-        f"\n----------------\nDone Processing: {str(file.name)} at {str(datetime.now())}",
-    )
+def cleanExit(outDir, tmpFile):
+    print("\nPerforming exit cleanup...")
+    if tmpFile.exists():
+        tmpFile.unlink()
+    rmEmptyDirs([outDir])
 
 
-# getParams = lambda metaData, params: [metaData["streams"][0][param] for param in params]
-
-# dur, bitR, codec, height, frRate
-
-# def prinLogMeta(metaData, logFile):
-
-# codec_name "height" "bit_rate" "r_frame_rate" "avg_frame_rate" 30000/1001
-# 1 codec_name "bit_rate" "channels" "bit_rate"
+def nothingExit():
+    print("Nothing to do.")
+    sys.exit()
 
 formats = [".mp4", ".avi"]
 
@@ -250,8 +253,7 @@ dirPath = pargs.dir.resolve()
 fileList = getFileList(dirPath, formats)
 
 if not fileList:
-    print("Nothing to do.")
-    sys.exit()
+    nothingExit()
 
 oldSize = bytesToMB(getFileSizes(fileList))
 
@@ -262,38 +264,33 @@ ffprobePath, ffmpegPath = checkPaths(
     }
 )
 
-outDir, logsDir, dryDir = makeTargetDirs(dirPath, ["out", "logs", "dry"])
-logFile = logsDir.joinpath(f"{dirPath.stem}.log")
-procFile = dirPath.joinpath("processed")
-processed = None
+(outDir,) = makeTargetDirs(dirPath, ["out"])
+tmpFile = outDir.joinpath(f"tmp-{currDTime()}.{outExt}")
+logFile = outDir.joinpath(f"{dirPath.stem}-{currDTime()}.log")
 
-@atexit.register
-def cleanExit():  # currFile / outFile
-    rmEmptyDirs([outDir, logsDir, dryDir])
-    processed = readFile(procFile)
-    notProcessed = [f for f in fileList if str(f) not in processed]
-    if procFile.stat().st_size == 0 or not notProcessed:
-        procFile.unlink()
+outFileList = getFileList(outDir, formats)
 
+atexit.register(cleanExit, outDir, tmpFile)
 
-if procFile.exists():
-    processed = readFile(procFile)
-# else:
-#     procFile.touch()
 
 for file in fileList:
-    if processed and str(file) in processed:
+    outFile = pathlib.Path(file.parent.joinpath(outDir.name).joinpath(file.name))
+
+    if any(outFileList) and outFile in outFileList:
+        statusInfo("Skipping", file, logFile)
         continue
 
     metaData = getMetaData(ffprobePath, file, logFile)
     if isinstance(metaData, Exception):
         break
 
-    sourceDur = metaData["streams"][0]["duration"]
+    # sourceDur = metaData["streams"][0]["duration"]
+    vdoParams, adoParams = mapMeta(metaData)
 
-    outFile = outDir.joinpath(f"{file.stem}.{outExt}")
+    # print(formatParams(vdoParams), formatParams(adoParams))
+    # nothingExit()
 
-    cmd = getffmpegCmd(ffmpegPath, file, outFile, pargs.res, pargs.speed)
+    cmd = getffmpegCmd(ffmpegPath, file, tmpFile, pargs.res, pargs.speed)
 
     if pargs.aac:
         cmd[12] = "libfdk_aac"
@@ -302,48 +299,40 @@ for file in fileList:
         # fdk_aac LPF cutoff https://wiki.hydrogenaud.io/index.php?title=Fraunhofer_FDK_AAC#Bandwidth
         cmd[15:15] = ["-afterburner", "1"]
 
-    PlFileInfo(file, logFile)
+    statusInfo("Processing", file, logFile)
+    # printNLog(logFile, cmd)
     cmdOut = runCmd(cmd, file, logFile)
     if isinstance(cmdOut, Exception):
         break
     printNLog(logFile, cmdOut)
-    dryFile = dryDir.joinpath(file.name)
-    file.rename(dryFile)
-    outFile.rename(f"{str(file)[:-4]}.{outExt}")
+    # outFile = tmpFile.with_stem(file.stem)  # maybe change to with_name for compatibilty
+    tmpFile.rename(outFile)
 
-    metaData = getMetaData(ffprobePath, f"{str(file)[:-4]}.{outExt}", logFile)  # fix
+    statusInfo("Processed", file, logFile)
+
+    metaData = getMetaData(ffprobePath, outFile, logFile)
     if isinstance(metaData, Exception):
         break
 
-    appendFile(procFile, f"\n{str(file)}")
+    # outDur = metaData["streams"][0]["duration"]
+    # if int(float(sourceDur)) != int(float(outDur)):
+    #     msg = f"\n\n{str(file.name)}\nWARNING: Mismatched source and output duration.\nSource duration:{sourceDur}\nDestination duration:{outDur}\n"
+    #     diff = int(float(outDur)) - int(float(sourceDur))
+    #     if diff > 1 or diff < 0:
+    #         msg += (
+    #             "\nWARNING: Source and output durations are significantly different.\n"
+    #         )
+    #     printNLog(logFile, msg)
 
-    outDur = metaData["streams"][0]["duration"]
-    if int(float(sourceDur)) != int(float(outDur)):
-        msg = f"\n\n{str(file.name)}\nWARNING: Mismatched source and output duration.\nSource duration:{sourceDur}\nDestination duration:{outDur}\n"
-        diff = int(float(outDur)) - int(float(sourceDur))
-        if diff > 1 or diff < 0:
-            msg += (
-                "\nWARNING: Source and output durations are significantly different.\n"
-            )
-        printNLog(logFile, msg)
-
-    PlFileDone(file, logFile)
 
     if pargs.wait:
         print(f"\nWaiting for {str(pargs.wait)} seconds.")
-        # time.sleep(int(pargs.wait))
         waitN(int(pargs.wait))
     else:
         choice = getInput()
         if choice == "e":
             break
 
-# rmNonEmptyDirs([outDir])
-
-# sys.exit()
-# def cleanExit(dirs, procFile, fileList, neDir=None):
-# if neDir:
-# cleanExit([outDir, logsDir, dryDir], procFile, fileList, outDir)
 
 # def writeSizes()
 #     newSize = bytesToMB(getFileSizes(getFileList(dirPath, [f".{outExt}"])))
