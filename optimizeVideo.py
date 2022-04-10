@@ -10,6 +10,7 @@ import sys
 import time
 import traceback
 from datetime import datetime
+from functools import partial
 
 
 def parseArgs():
@@ -60,12 +61,15 @@ def parseArgs():
 
 currDTime = lambda: datetime.now().strftime("%y%m%d-%H%M%S")
 
+secondsToHMS = lambda sec: str(datetime.timedelta(seconds=sec))
+
 
 def waitN(n):
+    print("\n")
     for i in reversed(range(0, n)):
         print(
-            f"{i}  ", end="\r", flush=True
-        )  # spaces for clearing digits left from multi digit coundown
+            f"Waiting for {str(i).zfill(3)} seconds.", end="\r", flush=True
+        )  # padding for clearing digits left from multi digit coundown
         time.sleep(1)
     print("\r")
 
@@ -213,16 +217,34 @@ def getMetaData(ffprobePath, currFile, logFile):
     metaData = json.loads(cmdOut)
     return metaData
 
-getParams = lambda metaData, strm, params: {param: metaData["streams"][strm][param] for param in params}
 
-def mapMeta(metaData):
-    params = ["codec_type", "codec_name", "duration", "bit_rate"]
-    vdoParams = getParams(metaData, 0, [*params, "height", "r_frame_rate"])
-    adoParams = getParams(metaData, 1, [*params, "channels", "sample_rate"])
-    vdoParams["bit_rate"] = str(int(vdoParams["bit_rate"]) / 1000) #
-    return vdoParams, adoParams
+getParams = lambda metaData, strm, params: {
+    param: metaData["streams"][strm][param] for param in params
+}
 
-formatParams = lambda params: "".join([f"{param}: {value}; " for param, value in params.items()])
+basicMeta = lambda metaData, strm: getParams(
+    metaData, strm, ["codec_type", "codec_name", "duration", "bit_rate"]
+)
+
+
+def adoMeta(metaData):
+    params = getParams(
+        metaData, 1, [*basicMeta(metaData, 1), "channels", "sample_rate"]
+    )
+    params["bit_rate"] = str(int(params["bit_rate"]) / 1000)
+    return params
+
+
+def vdoMeta(metaData):
+    params = getParams(metaData, 0, [*basicMeta(metaData, 0), "height", "r_frame_rate"])
+    params["bit_rate"] = str(int(params["bit_rate"]) / 1000)
+    return params
+
+
+formatParams = lambda params: "".join(
+    [f"{param}: {value}; " for param, value in params.items()]
+)
+
 
 def statusInfo(status, file, logFile):
     printNLog(
@@ -241,6 +263,17 @@ def cleanExit(outDir, tmpFile):
 def nothingExit():
     print("Nothing to do.")
     sys.exit()
+
+
+def compareDur(sourceDur, outDur, strmType, logFile):  # refactor
+    diff = float(sourceDur) - float(outDur)
+    n = 1  # < one second difference will trigger warning
+    # if diff:
+    #     msg = f"\n\nINFO: Mismatched {strmType} source and output duration."
+    if diff > n or diff < -n:
+        msg = f"\n********\nWARNING: Differnce between {strmType} source and output durations is more than {str(n)} second(s).\n"
+        printNLog(logFile, msg)
+
 
 formats = [".mp4", ".avi"]
 
@@ -267,6 +300,7 @@ ffprobePath, ffmpegPath = checkPaths(
 (outDir,) = makeTargetDirs(dirPath, ["out"])
 tmpFile = outDir.joinpath(f"tmp-{currDTime()}.{outExt}")
 logFile = outDir.joinpath(f"{dirPath.stem}-{currDTime()}.log")
+# printNLogP = partial(printNLog, logFile)
 
 outFileList = getFileList(outDir, formats)
 
@@ -275,20 +309,21 @@ atexit.register(cleanExit, outDir, tmpFile)
 
 for file in fileList:
     outFile = pathlib.Path(file.parent.joinpath(outDir.name).joinpath(file.name))
+    statusInfoP = partial(statusInfo, file=file, logFile=logFile)
 
     if any(outFileList) and outFile in outFileList:
-        statusInfo("Skipping", file, logFile)
+        statusInfoP("Skipping")
         continue
+
+    statusInfoP("Processing")
+    printNLog(logFile, f"Input file size: {bytesToMB(file.stat().st_size)} MB")
 
     metaData = getMetaData(ffprobePath, file, logFile)
     if isinstance(metaData, Exception):
         break
 
-    # sourceDur = metaData["streams"][0]["duration"]
-    vdoParams, adoParams = mapMeta(metaData)
-
-    # print(formatParams(vdoParams), formatParams(adoParams))
-    # nothingExit()
+    vdoInParams, adoInParams = vdoMeta(metaData), adoMeta(metaData)
+    printNLog(logFile, f"\n{formatParams(vdoInParams)}\n{formatParams(adoInParams)}")
 
     cmd = getffmpegCmd(ffmpegPath, file, tmpFile, pargs.res, pargs.speed)
 
@@ -299,34 +334,36 @@ for file in fileList:
         # fdk_aac LPF cutoff https://wiki.hydrogenaud.io/index.php?title=Fraunhofer_FDK_AAC#Bandwidth
         cmd[15:15] = ["-afterburner", "1"]
 
-    statusInfo("Processing", file, logFile)
     # printNLog(logFile, cmd)
     cmdOut = runCmd(cmd, file, logFile)
     if isinstance(cmdOut, Exception):
         break
     printNLog(logFile, cmdOut)
-    # outFile = tmpFile.with_stem(file.stem)  # maybe change to with_name for compatibilty
     tmpFile.rename(outFile)
 
-    statusInfo("Processed", file, logFile)
+    statusInfoP("Processed")
+    printNLog(logFile, f"Onput file size: {bytesToMB(outFile.stat().st_size)} MB")
 
     metaData = getMetaData(ffprobePath, outFile, logFile)
     if isinstance(metaData, Exception):
         break
 
-    # outDur = metaData["streams"][0]["duration"]
-    # if int(float(sourceDur)) != int(float(outDur)):
-    #     msg = f"\n\n{str(file.name)}\nWARNING: Mismatched source and output duration.\nSource duration:{sourceDur}\nDestination duration:{outDur}\n"
-    #     diff = int(float(outDur)) - int(float(sourceDur))
-    #     if diff > 1 or diff < 0:
-    #         msg += (
-    #             "\nWARNING: Source and output durations are significantly different.\n"
-    #         )
-    #     printNLog(logFile, msg)
-
+    vdoOutParams, adoOutParams = vdoMeta(metaData), adoMeta(metaData)
+    printNLog(logFile, f"\n{formatParams(vdoOutParams)}\n{formatParams(adoOutParams)}")
+    compareDur(
+        vdoInParams["duration"],
+        vdoOutParams["duration"],
+        vdoInParams["codec_type"],
+        logFile,
+    )
+    compareDur(
+        adoInParams["duration"],
+        adoOutParams["duration"],
+        adoInParams["codec_type"],
+        logFile,
+    )
 
     if pargs.wait:
-        print(f"\nWaiting for {str(pargs.wait)} seconds.")
         waitN(int(pargs.wait))
     else:
         choice = getInput()
@@ -334,6 +371,7 @@ for file in fileList:
             break
 
 
+# if any(outFileList):
 # def writeSizes()
 #     newSize = bytesToMB(getFileSizes(getFileList(dirPath, [f".{outExt}"])))
 
