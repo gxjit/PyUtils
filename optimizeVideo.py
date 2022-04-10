@@ -54,7 +54,8 @@ def parseArgs():
         "--speed",
         default="slow",
         type=str,
-        help="Encoding speed; can be slow, medium, fast, veryfast, etc.(default: slow)(use ultrafast for testing)",
+        help="Encoding speed; can be slow, medium, fast, veryfast, etc."
+        "(default: slow)(use ultrafast for testing)",
     )
     return parser.parse_args()
 
@@ -142,7 +143,8 @@ def printNLog(logFile, msg):
 def swr(currFile, logFile, exp=None):
     printNLog(
         logFile,
-        f"\n------\nERROR: Something went wrong while processing following file.\n > {str(currFile.name)}.",
+        f"\n------\nERROR: Something went wrong while processing following file."
+        f"\n > {str(currFile.name)}.",
     )
     if exp and exp.stderr:
         printNLog(logFile, f"\nStdErr: {exp.stderr}\nReturn Code: {exp.returncode}")
@@ -194,9 +196,9 @@ getffmpegCmd = lambda ffmpegPath, file, outFile, res, speed: [
     "-vf",
     f"scale=-1:{str(res)}",
     "-c:a",
-    "libmp3lame",
-    "-q:a",
-    "7",
+    "libmp3lame",  # -compression_level 0
+    "-b:a",
+    "72k",
     "-cutoff",
     "15500",
     "-ar",
@@ -271,7 +273,10 @@ def compareDur(sourceDur, outDur, strmType, logFile):  # refactor
     # if diff:
     #     msg = f"\n\nINFO: Mismatched {strmType} source and output duration."
     if diff > n or diff < -n:
-        msg = f"\n********\nWARNING: Differnce between {strmType} source and output durations is more than {str(n)} second(s).\n"
+        msg = (
+            f"\n********\nWARNING: Differnce between {strmType} source and output"
+            f" durations is more than {str(n)} second(s).\n"
+        )
         printNLog(logFile, msg)
 
 
@@ -308,6 +313,7 @@ atexit.register(cleanExit, outDir, tmpFile)
 
 
 for file in fileList:
+    # printNLogP()
     outFile = pathlib.Path(file.parent.joinpath(outDir.name).joinpath(file.name))
     statusInfoP = partial(statusInfo, file=file, logFile=logFile)
 
@@ -316,7 +322,7 @@ for file in fileList:
         continue
 
     statusInfoP("Processing")
-    printNLog(logFile, f"Input file size: {bytesToMB(file.stat().st_size)} MB")
+    printNLog(logFile, f"/nInput file size: {bytesToMB(file.stat().st_size)} MB")
 
     metaData = getMetaData(ffprobePath, file, logFile)
     if isinstance(metaData, Exception):
@@ -331,7 +337,8 @@ for file in fileList:
         cmd[12] = "libfdk_aac"
         cmd[13] = "-b:a"
         cmd[14] = "72k"
-        # fdk_aac LPF cutoff https://wiki.hydrogenaud.io/index.php?title=Fraunhofer_FDK_AAC#Bandwidth
+        # fdk_aac LPF cutoff
+        # https://wiki.hydrogenaud.io/index.php?title=Fraunhofer_FDK_AAC#Bandwidth
         cmd[15:15] = ["-afterburner", "1"]
 
     # printNLog(logFile, cmd)
@@ -381,5 +388,7 @@ for file in fileList:
 #         f.write(msg)
 
 
-# H264 fast encoding widespread support > VP9 high efficiency low file sizes Slow encoding medicore support > AV1 higher efficiency lower file sizes slower encoding little support
+# H264 fast encoding widespread support
+# > VP9 high efficiency low file sizes Slow encoding medicore support
+# > AV1 higher efficiency lower file sizes slower encoding little support
 # lbopus > Apple aac/qaac > fdk_aac > LAME > ffmpeg native aac
