@@ -193,6 +193,8 @@ getffmpegCmd = lambda ffmpegPath, file, outFile, res, speed: [
     speed,
     "-crf",
     "28",
+    "-vsync",
+    "vfr",
     "-vf",
     f"scale=-1:{str(res)}",
     "-c:a",
@@ -367,9 +369,11 @@ for idx, file in enumerate(fileList):
     cmd = getffmpegCmd(ffmpegPath, file, tmpFile, res, pargs.speed)
 
     if float(Fraction(vdoInParams["r_frame_rate"])) > 30:
-        printNLogP("\nLimiting frame rate to 30fps.")
-        vfi = cmd.index("-vf") + 1
-        cmd[vfi] += ",fps=fps=30"  # make this customizable
+        printNLogP("\nLimiting frame rate to 24fps.")  # make this customizable
+        vfri = cmd.index("vfr") + 1
+        cmd[vfri:vfri] = ["-r", "24"]  # else same as source?
+        # vfi = cmd.index("-vf") + 1
+        # cmd[vfi] += ",fps=fps=30"
 
     # if pargs.aac:
     #     switchAudio(cmd, "aac")
