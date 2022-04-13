@@ -9,8 +9,9 @@ import subprocess
 import sys
 import time
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import partial
+from fractions import Fraction
 
 
 def parseArgs():
@@ -62,7 +63,9 @@ def parseArgs():
 
 currDTime = lambda: datetime.now().strftime("%y%m%d-%H%M%S")
 
-secondsToHMS = lambda sec: str(datetime.timedelta(seconds=sec))
+secsToHMS = lambda sec: str(timedelta(seconds=sec))
+
+bytesToMB = lambda bytes: math.ceil(bytes / float(1 << 20))
 
 
 def waitN(n):
@@ -169,9 +172,6 @@ getFileList = lambda dirPath, exts: [
     f for f in dirPath.iterdir() if f.is_file() and f.suffix.lower() in exts
 ]
 
-bytesToMB = lambda bytes: math.ceil(bytes / float(1 << 20))
-
-
 getffprobeCmd = lambda ffprobePath, file: [
     ffprobePath,
     "-v",
@@ -248,10 +248,11 @@ formatParams = lambda params: "".join(
 )
 
 
-def statusInfo(status, file, logFile):
+def statusInfo(status, idx, file, logFile):
     printNLog(
         logFile,
-        f"\n----------------\n{status} file: {str(file.name)} at {str(datetime.now())}",
+        f"\n----------------\n{status} file {idx}:"
+        f" {str(file.name)} at {str(datetime.now())}",
     )
 
 
@@ -267,9 +268,9 @@ def nothingExit():
     sys.exit()
 
 
-def compareDur(sourceDur, outDur, strmType, logFile):  # refactor
+def compareDur(sourceDur, outDur, strmType, logFile):
     diff = float(sourceDur) - float(outDur)
-    n = 1  # < one second difference will trigger warning
+    n = 1  # < n second difference will trigger warning
     # if diff:
     #     msg = f"\n\nINFO: Mismatched {strmType} source and output duration."
     if diff > n or diff < -n:
@@ -302,36 +303,44 @@ ffprobePath, ffmpegPath = checkPaths(
     }
 )
 
-(outDir,) = makeTargetDirs(dirPath, ["out"])
+(outDir,) = makeTargetDirs(dirPath, [f"out-{outExt}"])
 tmpFile = outDir.joinpath(f"tmp-{currDTime()}.{outExt}")
 logFile = outDir.joinpath(f"{dirPath.stem}-{currDTime()}.log")
-# printNLogP = partial(printNLog, logFile)
+printNLogP = partial(printNLog, logFile)
 
-outFileList = getFileList(outDir, formats)
+outFileList = getFileList(outDir, [f".{outExt}"])
 
 atexit.register(cleanExit, outDir, tmpFile)
 
+totalTime = 0
 
-for file in fileList:
-    # printNLogP()
-    outFile = pathlib.Path(file.parent.joinpath(outDir.name).joinpath(file.name))
-    statusInfoP = partial(statusInfo, file=file, logFile=logFile)
+for idx, file in enumerate(fileList):
+    # printNLogP(f"")
+    outFile = pathlib.Path(file.parent.joinpath(f"{outDir.name}/{file.stem}.{outExt}"))
+    statusInfoP = partial(
+        statusInfo, idx=f"{idx+1}/{len(fileList)}", file=file, logFile=logFile
+    )
 
     if any(outFileList) and outFile in outFileList:
         statusInfoP("Skipping")
         continue
 
     statusInfoP("Processing")
-    printNLog(logFile, f"/nInput file size: {bytesToMB(file.stat().st_size)} MB")
+    printNLogP(f"\nInput file size: {bytesToMB(file.stat().st_size)} MB")
 
     metaData = getMetaData(ffprobePath, file, logFile)
     if isinstance(metaData, Exception):
         break
 
     vdoInParams, adoInParams = vdoMeta(metaData), adoMeta(metaData)
-    printNLog(logFile, f"\n{formatParams(vdoInParams)}\n{formatParams(adoInParams)}")
+    printNLogP(f"\n{formatParams(vdoInParams)}\n{formatParams(adoInParams)}")
 
     cmd = getffmpegCmd(ffmpegPath, file, tmpFile, pargs.res, pargs.speed)
+
+    if float(Fraction(vdoInParams["r_frame_rate"])) > 30:
+        printNLogP("Limiting frame rate to 30fps")
+        vfi = cmd.index("-vf") + 1
+        cmd[vfi] += ",fps=fps=30"  # make this customizable
 
     if pargs.aac:
         cmd[12] = "libfdk_aac"
@@ -342,21 +351,25 @@ for file in fileList:
         cmd[15:15] = ["-afterburner", "1"]
 
     # printNLog(logFile, cmd)
+    strtTime = time.time()
     cmdOut = runCmd(cmd, file, logFile)
     if isinstance(cmdOut, Exception):
         break
-    printNLog(logFile, cmdOut)
+    printNLogP(cmdOut)
     tmpFile.rename(outFile)
 
     statusInfoP("Processed")
-    printNLog(logFile, f"Onput file size: {bytesToMB(outFile.stat().st_size)} MB")
+    timeDiff = time.time() - strtTime
+    totalTime += timeDiff
+    printNLogP(f"Processed in: {secsToHMS(timeDiff)}")
+    printNLogP(f"\nOnput file size: {bytesToMB(outFile.stat().st_size)} MB")
 
     metaData = getMetaData(ffprobePath, outFile, logFile)
     if isinstance(metaData, Exception):
         break
 
     vdoOutParams, adoOutParams = vdoMeta(metaData), adoMeta(metaData)
-    printNLog(logFile, f"\n{formatParams(vdoOutParams)}\n{formatParams(adoOutParams)}")
+    printNLogP(f"\n{formatParams(vdoOutParams)}\n{formatParams(adoOutParams)}")
     compareDur(
         vdoInParams["duration"],
         vdoOutParams["duration"],
@@ -369,6 +382,8 @@ for file in fileList:
         adoInParams["codec_type"],
         logFile,
     )
+
+    printNLogP(f"\n\nTotal time elapsed: {secsToHMS(totalTime)}")
 
     if pargs.wait:
         waitN(int(pargs.wait))

@@ -155,22 +155,10 @@ main(parseArgs())
 # Container   Audio formats supported
 # MKV/MKA Opus, Vorbis, MP2, MP3, LC-AAC, HE-AAC, WMAv1, WMAv2, AC3, eAC3
 # MP4/M4A MP2, MP3, LC-AAC, HE-AAC, AC3
-# FLV/F4V MP3, LC-AAC, HE-AAC
-# 3GP/3G2 LC-AAC, HE-AAC
-# MPG MP2, MP3
-# PS/TS Stream    MP2, MP3, LC-AAC, HE-AAC, AC3
-# M2TS    AC3, eAC3
-# VOB MP2, AC3
-# RMVB    Vorbis, HE-AAC
 # WebM    Vorbis, Opus
 # OGG Vorbis, Opus
 
 # ffmpeg:
-# Dolby Digital: ac3
-# Dolby Digital Plus: eac3
-# MP2: libtwolame, mp2
-# Windows Media Audio 1: wmav1
-# Windows Media Audio 2: wmav2
 # AAC LC: libfdk_aac, aac
 # HE-AAC: libfdk_aac
 # Vorbis: libvorbis, vorbis
