@@ -1,7 +1,6 @@
 import argparse
 import atexit
 import json
-import math
 import os
 import pathlib
 import shutil
@@ -65,7 +64,7 @@ currDTime = lambda: datetime.now().strftime("%y%m%d-%H%M%S")
 
 secsToHMS = lambda sec: str(timedelta(seconds=sec))
 
-bytesToMB = lambda bytes: math.ceil(bytes / float(1 << 20))
+bytesToMB = lambda bytes: round(bytes / float(1 << 20), 2)
 
 
 def waitN(n):
@@ -196,9 +195,11 @@ getffmpegCmd = lambda ffmpegPath, file, outFile, res, speed: [
     "-vf",
     f"scale=-1:{str(res)}",
     "-c:a",
-    "libmp3lame",  # -compression_level 0
+    "libfdk_aac",
     "-b:a",
     "72k",
+    "-afterburner",
+    "1",
     "-cutoff",
     "15500",
     "-ar",
@@ -281,7 +282,29 @@ def compareDur(sourceDur, outDur, strmType, logFile):
         printNLog(logFile, msg)
 
 
-formats = [".mp4", ".avi"]
+def switchAudio(cmd, codec):  # speed
+
+    if codec == "aac":
+        cai = cmd.index("-c:a") + 1
+        cmd[cai:cai] = ["libfdk_aac", "-b:a", "72k", "-afterburner", "1"]
+        # fdk_aac LPF cutoff
+        # https://wiki.hydrogenaud.io/index.php?title=Fraunhofer_FDK_AAC#Bandwidth
+
+    # elif codec == "opus":
+    # ['libopus,' '-b:a', '64k', '-vbr on', '-compression_level', '10',
+    #  '-frame_duration', '60', '-apply_phase_inv', '0']
+
+    # ["libmp3lame", "-b:a", "72k", "-compression_level", "0"]
+
+    # if codec == "h264":
+    #     cvi = cmd.index("-c:v") + 1
+    #     cmd[cvi:cvi] = ["libx264", "-preset:v", speed, "-crf", "28",
+    #                       "-profile:v", "high"]
+
+    return cmd
+
+
+formats = [".mp4", ".avi", "mov"]
 
 outExt = "mp4"
 
@@ -293,8 +316,6 @@ fileList = getFileList(dirPath, formats)
 
 if not fileList:
     nothingExit()
-
-oldSize = bytesToMB(getFileSizes(fileList))
 
 ffprobePath, ffmpegPath = checkPaths(
     {
@@ -312,10 +333,9 @@ outFileList = getFileList(outDir, [f".{outExt}"])
 
 atexit.register(cleanExit, outDir, tmpFile)
 
-totalTime = 0
+totalTime, inSizes, outSizes = ([] for i in range(3))
 
 for idx, file in enumerate(fileList):
-    # printNLogP(f"")
     outFile = pathlib.Path(file.parent.joinpath(f"{outDir.name}/{file.stem}.{outExt}"))
     statusInfoP = partial(
         statusInfo, idx=f"{idx+1}/{len(fileList)}", file=file, logFile=logFile
@@ -326,7 +346,9 @@ for idx, file in enumerate(fileList):
         continue
 
     statusInfoP("Processing")
-    printNLogP(f"\nInput file size: {bytesToMB(file.stat().st_size)} MB")
+    inSize = bytesToMB(file.stat().st_size)
+    inSizes.append(inSize)
+    printNLogP(f"\nInput file size: {inSize} MB")
 
     metaData = getMetaData(ffprobePath, file, logFile)
     if isinstance(metaData, Exception):
@@ -335,20 +357,21 @@ for idx, file in enumerate(fileList):
     vdoInParams, adoInParams = vdoMeta(metaData), adoMeta(metaData)
     printNLogP(f"\n{formatParams(vdoInParams)}\n{formatParams(adoInParams)}")
 
-    cmd = getffmpegCmd(ffmpegPath, file, tmpFile, pargs.res, pargs.speed)
+    if int(vdoInParams["height"]) < pargs.res:
+        printNLogP("\nResolution specified is less than input resolution.")
+        res = int(vdoInParams["height"])
+    else:
+        res = pargs.res
+
+    cmd = getffmpegCmd(ffmpegPath, file, tmpFile, res, pargs.speed)
 
     if float(Fraction(vdoInParams["r_frame_rate"])) > 30:
-        printNLogP("Limiting frame rate to 30fps")
+        printNLogP("\nLimiting frame rate to 30fps.")
         vfi = cmd.index("-vf") + 1
         cmd[vfi] += ",fps=fps=30"  # make this customizable
 
-    if pargs.aac:
-        cmd[12] = "libfdk_aac"
-        cmd[13] = "-b:a"
-        cmd[14] = "72k"
-        # fdk_aac LPF cutoff
-        # https://wiki.hydrogenaud.io/index.php?title=Fraunhofer_FDK_AAC#Bandwidth
-        cmd[15:15] = ["-afterburner", "1"]
+    # if pargs.aac:
+    #     switchAudio(cmd, "aac")
 
     # printNLog(logFile, cmd)
     strtTime = time.time()
@@ -359,10 +382,12 @@ for idx, file in enumerate(fileList):
     tmpFile.rename(outFile)
 
     statusInfoP("Processed")
-    timeDiff = time.time() - strtTime
-    totalTime += timeDiff
-    printNLogP(f"Processed in: {secsToHMS(timeDiff)}")
-    printNLogP(f"\nOnput file size: {bytesToMB(outFile.stat().st_size)} MB")
+    timeTaken = time.time() - strtTime
+    totalTime.append(timeTaken)
+    printNLogP(f"Processed in: {secsToHMS(timeTaken)}")
+    outSize = bytesToMB(outFile.stat().st_size)
+    outSizes.append(outSize)
+    printNLogP(f"\nOnput file size: {outSize} MB")
 
     metaData = getMetaData(ffprobePath, outFile, logFile)
     if isinstance(metaData, Exception):
@@ -383,7 +408,14 @@ for idx, file in enumerate(fileList):
         logFile,
     )
 
-    printNLogP(f"\n\nTotal time elapsed: {secsToHMS(totalTime)}")
+    printNLogP(
+        f"\n\nTotal Processing Time: {secsToHMS(sum(totalTime))}, "
+        f"Avergae Processing Time: {secsToHMS(sum(totalTime)/len(inSizes))}"
+        f"\nTotal Input Size: {round(sum(inSizes), 2)} MB, "
+        f"Avergae Input Size: {round(sum(inSizes)/len(inSizes), 2)} MB"
+        f"\nTotal Output Size: {round(sum(outSizes), 2)} MB, "
+        f"Avergae Output Size: {round(sum(outSizes)/len(outSizes), 2)} MB"
+    )
 
     if pargs.wait:
         waitN(int(pargs.wait))
@@ -393,17 +425,7 @@ for idx, file in enumerate(fileList):
             break
 
 
-# if any(outFileList):
-# def writeSizes()
-#     newSize = bytesToMB(getFileSizes(getFileList(dirPath, [f".{outExt}"])))
-
-#     with open(logsDir.joinpath(f"{dirPath.name}.log"), "a") as f:
-#         msg = f"\n\nOld size: {oldSize} MB\nNew Size: {newSize} MB"
-#         print(msg)
-#         f.write(msg)
-
-
 # H264 fast encoding widespread support
-# > VP9 high efficiency low file sizes Slow encoding medicore support
-# > AV1 higher efficiency lower file sizes slower encoding little support
+# > H265 high efficiency low file sizes Slow encoding little support
+# > AV1 higher efficiency lower file sizes slower encoding very little support
 # lbopus > Apple aac/qaac > fdk_aac > LAME > ffmpeg native aac
