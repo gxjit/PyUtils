@@ -11,6 +11,7 @@ import traceback
 from datetime import datetime, timedelta
 from functools import partial
 from fractions import Fraction
+from statistics import fmean
 
 
 def parseArgs():
@@ -410,11 +411,11 @@ for idx, file in enumerate(fileList):
 
     printNLogP(
         f"\n\nTotal Processing Time: {secsToHMS(sum(totalTime))}, "
-        f"Avergae Processing Time: {secsToHMS(sum(totalTime)/len(inSizes))}"
+        f"Avergae Processing Time: {secsToHMS(fmean(totalTime))}"
         f"\nTotal Input Size: {round(sum(inSizes), 2)} MB, "
-        f"Avergae Input Size: {round(sum(inSizes)/len(inSizes), 2)} MB"
+        f"Avergae Input Size: {round(fmean(inSizes), 2)} MB"
         f"\nTotal Output Size: {round(sum(outSizes), 2)} MB, "
-        f"Avergae Output Size: {round(sum(outSizes)/len(outSizes), 2)} MB"
+        f"Avergae Output Size: {round(fmean(outSizes), 2)} MB"
     )
 
     if pargs.wait:
