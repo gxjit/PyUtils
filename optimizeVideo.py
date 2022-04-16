@@ -273,16 +273,19 @@ def nothingExit():
 
 
 def compareDur(sourceDur, outDur, strmType, logFile):
-    diff = float(sourceDur) - float(outDur)
-    n = 1  # < n second difference will trigger warning
+    diff = abs(float(sourceDur) - float(outDur))
+    n = 1  # < n seconds difference will trigger warning
     # if diff:
     #     msg = f"\n\nINFO: Mismatched {strmType} source and output duration."
-    if diff > n or diff < -n:
+    if diff > n:
         msg = (
             f"\n********\nWARNING: Differnce between {strmType} source and output"
             f" durations is more than {str(n)} second(s).\n"
         )
         printNLog(logFile, msg)
+
+
+dynWait = lambda secs, n=7.5: secs / n
 
 
 def switchAudio(cmd, codec):  # speed
@@ -368,7 +371,8 @@ for idx, file in enumerate(fileList):
 
     cmd = getffmpegCmd(ffmpegPath, file, tmpFile, res, pargs.speed)
 
-    if float(Fraction(vdoInParams["r_frame_rate"])) > 30:
+    # fps = 24
+    if float(Fraction(vdoInParams["r_frame_rate"])) > 24:
         printNLogP("\nLimiting frame rate to 24fps.")  # make this customizable
         vfri = cmd.index("vfr") + 1
         cmd[vfri:vfri] = ["-r", "24"]  # else same as source?
@@ -425,9 +429,10 @@ for idx, file in enumerate(fileList):
     if pargs.wait:
         waitN(int(pargs.wait))
     else:
-        choice = getInput()
-        if choice == "e":
-            break
+        waitN(int(dynWait(timeTaken)))
+        # choice = getInput()
+        # if choice == "e":
+        #     break
 
 
 # H264 fast encoding widespread support
