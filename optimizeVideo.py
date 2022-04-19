@@ -22,6 +22,20 @@ def parseArgs():
         else:
             raise argparse.ArgumentTypeError("Invalid Directory path")
 
+    def aCodec(cdc):
+        cdc = cdc.lower()
+        if cdc in ["opus", "he", "aac"]:
+            return cdc
+        else:
+            raise argparse.ArgumentTypeError("Invalid Audio Codec")
+
+    def vCodec(cdc):
+        cdc = cdc.lower()
+        if cdc in ["avc", "hevc"]:
+            return cdc
+        else:
+            raise argparse.ArgumentTypeError("Invalid Video Codec")
+
     parser = argparse.ArgumentParser(
         description="Optimize media file size by encoding to h264/aac/mp3."
     )
@@ -38,17 +52,18 @@ def parseArgs():
         help="Wait time in seconds between each iteration, default is 10",
     )
     parser.add_argument(
-        "-a",
-        "--aac",
-        action="store_true",
-        help="Use fdk aac encoder instead of LAME mp3.",
-    )
-    parser.add_argument(
         "-r",
         "--res",
         default=540,
         type=int,
         help="Video resolution; can be 360, 480, 540, 720, etc.(default: 540)",
+    )
+    parser.add_argument(
+        "-f",
+        "--fps",
+        default=24,
+        type=int,
+        help="Video frame rate; can be 24, 25, 30, 60, etc.(default: 24)",
     )
     parser.add_argument(
         "-s",
@@ -58,6 +73,22 @@ def parseArgs():
         help="Encoding speed; can be slow, medium, fast, veryfast, etc."
         "(default: slow)(use ultrafast for testing)",
     )
+    parser.add_argument(
+        "-a",
+        "--audio",
+        default="opus",
+        type=aCodec,
+        help='Select an audio codec from AAC LC: "aac", HE-AAC: "he" and Opus: "opus".'
+        "(default: opus)",
+    )
+    parser.add_argument(
+        "-v",
+        "--video",
+        default="hevc",
+        type=vCodec,
+        help='Select a video codec from HEVC/H265: "hevc" and AVC/H264: "avc".'
+        "(default: hevc)",
+    )
     return parser.parse_args()
 
 
@@ -65,7 +96,9 @@ currDTime = lambda: datetime.now().strftime("%y%m%d-%H%M%S")
 
 secsToHMS = lambda sec: str(timedelta(seconds=sec))
 
-bytesToMB = lambda bytes: round(bytes / float(1 << 20), 2)
+round2 = partial(round, ndigits=2)
+
+bytesToMB = lambda bytes: round2(bytes / float(1 << 20))
 
 
 def waitN(n):
@@ -183,26 +216,18 @@ getffprobeCmd = lambda ffprobePath, file: [
     str(file),
 ]
 
-getffmpegCmd = lambda ffmpegPath, file, outFile, res, speed: [
+getffmpegCmd = lambda ffmpegPath, file, outFile, res, cv, ca: [
     ffmpegPath,
     "-i",
     str(file),
     "-c:v",
-    "libx264",
-    "-preset:v",
-    speed,
-    "-crf",
-    "28",
+    *cv,
     "-vsync",
     "vfr",
     "-vf",
     f"scale=-1:{str(res)}",
     "-c:a",
-    "libfdk_aac",
-    "-b:a",
-    "72k",
-    "-afterburner",
-    "1",
+    *ca,
     "-cutoff",
     "15500",
     "-ar",
@@ -229,7 +254,7 @@ getParams = lambda metaData, strm, params: {
 }
 
 basicMeta = lambda metaData, strm: getParams(
-    metaData, strm, ["codec_type", "codec_name", "duration", "bit_rate"]
+    metaData, strm, ["codec_type", "codec_name", "profile", "duration", "bit_rate"]
 )
 
 
@@ -288,29 +313,71 @@ def compareDur(sourceDur, outDur, strmType, logFile):
 dynWait = lambda secs, n=7.5: secs / n
 
 
-def switchAudio(cmd, codec):  # speed
+def selectCodec(codec, quality=None, speed=None, stereo=None):
 
     if codec == "aac":
-        cai = cmd.index("-c:a") + 1
-        cmd[cai:cai] = ["libfdk_aac", "-b:a", "72k", "-afterburner", "1"]
+        cdc = [
+            "libfdk_aac",
+            "-b:a",
+            "72k" if quality is None else quality,
+            "-afterburner",
+            "1",
+        ]
         # fdk_aac LPF cutoff
         # https://wiki.hydrogenaud.io/index.php?title=Fraunhofer_FDK_AAC#Bandwidth
 
-    # elif codec == "opus":
-    # ['libopus,' '-b:a', '64k', '-vbr on', '-compression_level', '10',
-    #  '-frame_duration', '60', '-apply_phase_inv', '0']
+    if codec == "he":
+        cdc = [
+            "libfdk_aac",
+            "-profile:a",
+            "aac_he",
+            "-b:a",
+            "56k" if quality is None else quality,
+            "-afterburner",
+            "1",
+        ]
+        # mono he-aac encodes are reported as stereo
+        # https://trac.ffmpeg.org/ticket/3361
 
-    # ["libmp3lame", "-b:a", "72k", "-compression_level", "0"]
+    if codec == "opus":
+        cdc = [
+            "libopus",
+            "-b:a",
+            "48k" if quality is None else quality,
+            "-vbr",
+            "on",
+            "-compression_level",
+            "10",
+            "-frame_duration",
+            "60",
+        ]
+        if stereo is None:
+            cdc = cdc + ["-apply_phase_inv", "0"]
 
-    # if codec == "h264":
-    #     cvi = cmd.index("-c:v") + 1
-    #     cmd[cvi:cvi] = ["libx264", "-preset:v", speed, "-crf", "28",
-    #                       "-profile:v", "high"]
+    if codec == "avc":
+        cdc = [
+            "libx264",
+            "-preset:v",
+            "slow" if speed is None else speed,
+            "-crf",
+            "28" if quality is None else quality,
+            "-profile:v",
+            "high",
+        ]
 
-    return cmd
+    if codec == "hevc":
+        cdc = [
+            "libx265",
+            "-preset:v",
+            "medium" if speed is None else speed,
+            "-crf",
+            "32" if quality is None else quality,
+        ]
+
+    return cdc
 
 
-formats = [".mp4", ".avi", "mov"]
+formats = [".mp4", ".avi", ".mov", ".mkv"]
 
 outExt = "mp4"
 
@@ -354,7 +421,6 @@ for idx, file in enumerate(fileList):
     statusInfoP("Processing")
     inSize = bytesToMB(file.stat().st_size)
     inSizes.append(inSize)
-    printNLogP(f"\nInput file size: {inSize} MB")
 
     metaData = getMetaData(ffprobePath, file, logFile)
     if isinstance(metaData, Exception):
@@ -369,20 +435,19 @@ for idx, file in enumerate(fileList):
     else:
         res = pargs.res
 
-    cmd = getffmpegCmd(ffmpegPath, file, tmpFile, res, pargs.speed)
+    ca = selectCodec(pargs.audio)
+    cv = selectCodec(pargs.video, speed=pargs.speed)
+    cmd = getffmpegCmd(ffmpegPath, file, tmpFile, res, cv, ca)
 
-    # fps = 24
-    if float(Fraction(vdoInParams["r_frame_rate"])) > 24:
-        printNLogP("\nLimiting frame rate to 24fps.")  # make this customizable
+    fps = pargs.fps
+    if float(Fraction(vdoInParams["r_frame_rate"])) > fps:
+        printNLogP(f"\nLimiting frame rate to {fps}fps.")
         vfri = cmd.index("vfr") + 1
-        cmd[vfri:vfri] = ["-r", "24"]  # else same as source?
+        cmd[vfri:vfri] = ["-r", str(fps)]  # else same as source?
         # vfi = cmd.index("-vf") + 1
         # cmd[vfi] += ",fps=fps=30"
 
-    # if pargs.aac:
-    #     switchAudio(cmd, "aac")
-
-    # printNLog(logFile, cmd)
+    printNLog(logFile, f"\n{cmd}")
     strtTime = time.time()
     cmdOut = runCmd(cmd, file, logFile)
     if isinstance(cmdOut, Exception):
@@ -393,10 +458,8 @@ for idx, file in enumerate(fileList):
     statusInfoP("Processed")
     timeTaken = time.time() - strtTime
     totalTime.append(timeTaken)
-    printNLogP(f"Processed in: {secsToHMS(timeTaken)}")
     outSize = bytesToMB(outFile.stat().st_size)
     outSizes.append(outSize)
-    printNLogP(f"\nOnput file size: {outSize} MB")
 
     metaData = getMetaData(ffprobePath, outFile, logFile)
     if isinstance(metaData, Exception):
@@ -418,12 +481,17 @@ for idx, file in enumerate(fileList):
     )
 
     printNLogP(
-        f"\n\nTotal Processing Time: {secsToHMS(sum(totalTime))}, "
+        f"\n\nInput file size: {inSize} MB, "
+        f"Output file size: {outSize} MB"
+        f"\nProcessed in: {secsToHMS(timeTaken)}"
+        f"\nTotal Processing Time: {secsToHMS(sum(totalTime))}, "
         f"Avergae Processing Time: {secsToHMS(fmean(totalTime))}"
-        f"\nTotal Input Size: {round(sum(inSizes), 2)} MB, "
-        f"Avergae Input Size: {round(fmean(inSizes), 2)} MB"
-        f"\nTotal Output Size: {round(sum(outSizes), 2)} MB, "
-        f"Avergae Output Size: {round(fmean(outSizes), 2)} MB"
+        f"\nTotal Input Size: {round2(sum(inSizes))} MB, "
+        f"Avergae Input Size: {round2(fmean(inSizes))} MB"
+        f"\nTotal Output Size: {round2(sum(outSizes))} MB, "
+        f"Avergae Output Size: {round2(fmean(outSizes))} MB"
+        "\nTotal Size Reduction: "
+        f"{round2(((sum(inSizes)-sum(outSizes))/sum(inSizes))*100)}%"
     )
 
     if pargs.wait:
