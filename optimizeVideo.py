@@ -22,19 +22,15 @@ def parseArgs():
         else:
             raise argparse.ArgumentTypeError("Invalid Directory path")
 
-    def aCodec(cdc):
+    def checkCodec(cdc, codecs):
         cdc = cdc.lower()
-        if cdc in ["opus", "he", "aac"]:
+        if cdc in codecs:
             return cdc
         else:
-            raise argparse.ArgumentTypeError("Invalid Audio Codec")
+            raise argparse.ArgumentTypeError("Invalid Codec")
 
-    def vCodec(cdc):
-        cdc = cdc.lower()
-        if cdc in ["avc", "hevc"]:
-            return cdc
-        else:
-            raise argparse.ArgumentTypeError("Invalid Video Codec")
+    aCodec = partial(checkCodec, codecs=["opus", "he", "aac"])
+    vCodec = partial(checkCodec, codecs=["avc", "hevc"])
 
     parser = argparse.ArgumentParser(
         description="Optimize media file size by encoding to h264/aac/mp3."
@@ -56,14 +52,14 @@ def parseArgs():
         "--res",
         default=540,
         type=int,
-        help="Video resolution; can be 360, 480, 540, 720, etc.(default: 540)",
+        help="Limit video resolution to; can be 360, 480, 540, 720, etc.(default: 540)",
     )
     parser.add_argument(
         "-f",
         "--fps",
         default=24,
         type=int,
-        help="Video frame rate; can be 24, 25, 30, 60, etc.(default: 24)",
+        help="Limit video frame rate to; can be 24, 25, 30, 60, etc.(default: 24)",
     )
     parser.add_argument(
         "-s",
@@ -71,7 +67,7 @@ def parseArgs():
         default="slow",
         type=str,
         help="Encoding speed; can be slow, medium, fast, veryfast, etc."
-        "(default: slow)(use ultrafast for testing)",
+        "(defaults:: avc: slow, hevc: medium)(use ultrafast for testing)",
     )
     parser.add_argument(
         "-a",
@@ -94,11 +90,15 @@ def parseArgs():
 
 currDTime = lambda: datetime.now().strftime("%y%m%d-%H%M%S")
 
-secsToHMS = lambda sec: str(timedelta(seconds=sec))
+secsToHMS = lambda sec: str(timedelta(seconds=sec)).split(".")[0]
 
 round2 = partial(round, ndigits=2)
 
 bytesToMB = lambda bytes: round2(bytes / float(1 << 20))
+
+now = lambda: str(datetime.now()).split(".")[0]
+
+dynWait = lambda secs, n=7.5: secs / n
 
 
 def waitN(n):
@@ -216,24 +216,22 @@ getffprobeCmd = lambda ffprobePath, file: [
     str(file),
 ]
 
-getffmpegCmd = lambda ffmpegPath, file, outFile, res, cv, ca: [
+getffmpegCmd = lambda ffmpegPath, file, outFile, cv, ca, res, fps: [
     ffmpegPath,
     "-i",
     str(file),
     "-c:v",
     *cv,
+    "-pix_fmt",
+    "yuv420p",
     "-vsync",
     "vfr",
+    "-r",
+    str(fps),
     "-vf",
     f"scale=-1:{str(res)}",
     "-c:a",
     *ca,
-    "-cutoff",
-    "15500",
-    "-ar",
-    "32000",  # or 22050
-    "-ac",  # pargs.stereo?
-    "1",
     "-loglevel",
     "warning",  # info
     str(outFile),
@@ -280,8 +278,7 @@ formatParams = lambda params: "".join(
 def statusInfo(status, idx, file, logFile):
     printNLog(
         logFile,
-        f"\n----------------\n{status} file {idx}:"
-        f" {str(file.name)} at {str(datetime.now())}",
+        f"\n----------------\n{status} file {idx}:" f" {str(file.name)} at {now()}",
     )
 
 
@@ -310,9 +307,6 @@ def compareDur(sourceDur, outDur, strmType, logFile):
         printNLog(logFile, msg)
 
 
-dynWait = lambda secs, n=7.5: secs / n
-
-
 def selectCodec(codec, quality=None, speed=None, stereo=None):
 
     if codec == "aac":
@@ -322,8 +316,12 @@ def selectCodec(codec, quality=None, speed=None, stereo=None):
             "72k" if quality is None else quality,
             "-afterburner",
             "1",
+            "-cutoff",
+            "15500",
+            "-ar",
+            "32000",
         ]
-        # fdk_aac LPF cutoff
+        # fdk_aac defaults to a LPF cutoff around 14k
         # https://wiki.hydrogenaud.io/index.php?title=Fraunhofer_FDK_AAC#Bandwidth
 
     if codec == "he":
@@ -351,8 +349,10 @@ def selectCodec(codec, quality=None, speed=None, stereo=None):
             "-frame_duration",
             "60",
         ]
-        if stereo is None:
-            cdc = cdc + ["-apply_phase_inv", "0"]
+
+        # if stereo is None:
+        #     cdc = cdc + ["-apply_phase_inv", "0"]
+        # ["-ac", "1" ]
 
     if codec == "avc":
         cdc = [
@@ -429,23 +429,17 @@ for idx, file in enumerate(fileList):
     vdoInParams, adoInParams = vdoMeta(metaData), adoMeta(metaData)
     printNLogP(f"\n{formatParams(vdoInParams)}\n{formatParams(adoInParams)}")
 
-    if int(vdoInParams["height"]) < pargs.res:
-        printNLogP("\nResolution specified is less than input resolution.")
+    res = pargs.res
+    if int(vdoInParams["height"]) < res:
         res = int(vdoInParams["height"])
-    else:
-        res = pargs.res
+
+    fps = pargs.fps
+    if float(Fraction(vdoInParams["r_frame_rate"])) < fps:
+        fps = vdoInParams["r_frame_rate"]
 
     ca = selectCodec(pargs.audio)
     cv = selectCodec(pargs.video, speed=pargs.speed)
-    cmd = getffmpegCmd(ffmpegPath, file, tmpFile, res, cv, ca)
-
-    fps = pargs.fps
-    if float(Fraction(vdoInParams["r_frame_rate"])) > fps:
-        printNLogP(f"\nLimiting frame rate to {fps}fps.")
-        vfri = cmd.index("vfr") + 1
-        cmd[vfri:vfri] = ["-r", str(fps)]  # else same as source?
-        # vfi = cmd.index("-vf") + 1
-        # cmd[vfi] += ",fps=fps=30"
+    cmd = getffmpegCmd(ffmpegPath, file, tmpFile, cv, ca, res, fps)
 
     printNLog(logFile, f"\n{cmd}")
     strtTime = time.time()
@@ -480,6 +474,8 @@ for idx, file in enumerate(fileList):
         logFile,
     )
 
+    # inSum, inMean, = sum(inSizes), fmean(inSizes)
+    # outSum, outMean = sum(outSizes), fmean(outSizes)
     printNLogP(
         f"\n\nInput file size: {inSize} MB, "
         f"Output file size: {outSize} MB"
@@ -504,6 +500,6 @@ for idx, file in enumerate(fileList):
 
 
 # H264 fast encoding widespread support
-# > H265 high efficiency low file sizes Slow encoding little support
-# > AV1 higher efficiency lower file sizes slower encoding very little support
-# lbopus > Apple aac/qaac > fdk_aac > LAME > ffmpeg native aac
+# > H265 high efficiency low file sizes Slow encoding medicore support
+# > AV1 higher efficiency lower file sizes slow encoding little to no support
+# libopus > fdk_aac SBR > fdk_aac >= vorbis > LAME > ffmpeg native aac
