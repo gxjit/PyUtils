@@ -520,7 +520,7 @@ for idx, file in enumerate(fileList):
         f"\nTotal Processing Time: {secsToHMS(sum(totalTime))}, "
         f"Average Processing Time: {secsToHMS(fmean(totalTime))}"
         "\nEstimated time: "
-        f"{secsToHMS((fmean(lengths)/fmean(totalTime)) * (len(fileList) - (idx+1)))}, "
+        f"{secsToHMS(fmean(totalTime) * (len(fileList) - (idx+1)))}, "
         f"Average Speed: x{round2(fmean(lengths)/fmean(totalTime))}"
     )
 
