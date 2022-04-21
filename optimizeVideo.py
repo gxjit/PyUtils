@@ -287,10 +287,10 @@ def getMeta(metaData, cType):
                 strm,
                 [*basicMeta, "height", "r_frame_rate"],
             )
-        try:
-            params["bit_rate"] = str(round2(float(params["bit_rate"]) / 1000))
-        except KeyError:
-            pass
+    try:
+        params["bit_rate"] = str(round2(float(params["bit_rate"]) / 1000))
+    except KeyError:
+        pass
     return params
 
 
