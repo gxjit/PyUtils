@@ -347,12 +347,8 @@ def selectCodec(codec, quality=None, speed=None, stereo=None):
             "-compression_level",
             "10",
             "-frame_duration",
-            "60",
+            "20",
         ]
-
-        # if stereo is None:
-        #     cdc = cdc + ["-apply_phase_inv", "0"]
-        # ["-ac", "1" ]
 
     if codec == "avc":
         cdc = [
@@ -406,7 +402,7 @@ outFileList = getFileList(outDir, [f".{outExt}"])
 
 atexit.register(cleanExit, outDir, tmpFile)
 
-totalTime, inSizes, outSizes = ([] for i in range(3))
+totalTime, inSizes, outSizes, lengths = ([] for i in range(4))
 
 for idx, file in enumerate(fileList):
     outFile = pathlib.Path(file.parent.joinpath(f"{outDir.name}/{file.stem}.{outExt}"))
@@ -419,15 +415,12 @@ for idx, file in enumerate(fileList):
         continue
 
     statusInfoP("Processing")
-    inSize = bytesToMB(file.stat().st_size)
-    inSizes.append(inSize)
 
     metaData = getMetaData(ffprobePath, file, logFile)
     if isinstance(metaData, Exception):
         break
 
     vdoInParams, adoInParams = vdoMeta(metaData), adoMeta(metaData)
-    printNLogP(f"\n{formatParams(vdoInParams)}\n{formatParams(adoInParams)}")
 
     res = pargs.res
     if int(vdoInParams["height"]) < res:
@@ -441,26 +434,30 @@ for idx, file in enumerate(fileList):
     cv = selectCodec(pargs.video, speed=pargs.speed)
     cmd = getffmpegCmd(ffmpegPath, file, tmpFile, cv, ca, res, fps)
 
-    printNLog(logFile, f"\n{cmd}")
+    printNLog(logFile, f'\n{" ".join(cmd)}')
     strtTime = time.time()
     cmdOut = runCmd(cmd, file, logFile)
     if isinstance(cmdOut, Exception):
         break
+    timeTaken = time.time() - strtTime
+    totalTime.append(timeTaken)
+
     printNLogP(cmdOut)
     tmpFile.rename(outFile)
 
     statusInfoP("Processed")
-    timeTaken = time.time() - strtTime
-    totalTime.append(timeTaken)
-    outSize = bytesToMB(outFile.stat().st_size)
-    outSizes.append(outSize)
 
     metaData = getMetaData(ffprobePath, outFile, logFile)
     if isinstance(metaData, Exception):
         break
 
     vdoOutParams, adoOutParams = vdoMeta(metaData), adoMeta(metaData)
-    printNLogP(f"\n{formatParams(vdoOutParams)}\n{formatParams(adoOutParams)}")
+
+    printNLogP(
+        f"\nInput:: {formatParams(vdoInParams)}\n{formatParams(adoInParams)}"
+        f"\nOutput:: {formatParams(vdoOutParams)}\n{formatParams(adoOutParams)}"
+    )
+
     compareDur(
         vdoInParams["duration"],
         vdoOutParams["duration"],
@@ -474,20 +471,33 @@ for idx, file in enumerate(fileList):
         logFile,
     )
 
-    # inSum, inMean, = sum(inSizes), fmean(inSizes)
-    # outSum, outMean = sum(outSizes), fmean(outSizes)
+    inSize = bytesToMB(file.stat().st_size)
+    outSize = bytesToMB(outFile.stat().st_size)
+    length = float(vdoInParams["duration"])
+    inSizes.append(inSize)
+    outSizes.append(outSize)
+    lengths.append(length)
+    inSum, inMean, = sum(inSizes), fmean(inSizes)  # fmt: skip
+    outSum, outMean = sum(outSizes), fmean(outSizes)
+
     printNLogP(
         f"\n\nInput file size: {inSize} MB, "
         f"Output file size: {outSize} MB"
-        f"\nProcessed in: {secsToHMS(timeTaken)}"
+        f"\nProcessed in: {secsToHMS(timeTaken)}, "
+        f"Processing Speed: x{round2(length/timeTaken)}"
         f"\nTotal Processing Time: {secsToHMS(sum(totalTime))}, "
-        f"Avergae Processing Time: {secsToHMS(fmean(totalTime))}"
-        f"\nTotal Input Size: {round2(sum(inSizes))} MB, "
-        f"Avergae Input Size: {round2(fmean(inSizes))} MB"
-        f"\nTotal Output Size: {round2(sum(outSizes))} MB, "
-        f"Avergae Output Size: {round2(fmean(outSizes))} MB"
+        f"Average Processing Time: {secsToHMS(fmean(totalTime))}"
+        f"\nTotal Input Size: {round2(inSum)} MB, "
+        f"Average Input Size: {round2(inMean)} MB"
+        f"\nTotal Output Size: {round2(outSum)} MB, "
+        f"Average Output Size: {round2(outMean)} MB"
         "\nTotal Size Reduction: "
-        f"{round2(((sum(inSizes)-sum(outSizes))/sum(inSizes))*100)}%"
+        f"{round2(((inSum-outSum)/inSum)*100)}%, "
+        "Average Size Reduction: "
+        f"{round2(((inMean-outMean)/inMean)*100)}%"
+        "\nEstimated time: "
+        f"{secsToHMS((fmean(lengths)/fmean(totalTime)) * (len(fileList) - (idx+1)))}, "
+        f"Average Speed: x{round2(fmean(lengths)/fmean(totalTime))}"
     )
 
     if pargs.wait:
@@ -499,7 +509,7 @@ for idx, file in enumerate(fileList):
         #     break
 
 
-# H264 fast encoding widespread support
-# > H265 high efficiency low file sizes Slow encoding medicore support
-# > AV1 higher efficiency lower file sizes slow encoding little to no support
-# libopus > fdk_aac SBR > fdk_aac >= vorbis > LAME > ffmpeg native aac
+# H264 medium efficiency fast encoding widespread support
+# > H265 high efficiency Slow encoding medicore support
+# > AV1 higher efficiency slow encoding little to no support
+# libopus > fdk_aac SBR > fdk_aac >= vorbis > libmp3lame > ffmpeg aac
