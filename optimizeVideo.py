@@ -1,6 +1,5 @@
 import argparse
 import atexit
-from traceback import format_exc
 from datetime import datetime, timedelta
 from fractions import Fraction
 from functools import partial
@@ -13,6 +12,7 @@ from statistics import fmean
 from subprocess import run
 from sys import exit
 from time import sleep, time
+from traceback import format_exc
 
 
 def parseArgs():
@@ -65,7 +65,7 @@ def parseArgs():
     parser.add_argument(
         "-s",
         "--speed",
-        default="slow",
+        default=None,
         type=str,
         help="Encoding speed; can be slow, medium, fast, veryfast, etc."
         "(defaults:: avc: slow, hevc: medium)(use ultrafast for testing)",
@@ -267,17 +267,30 @@ basicMeta = lambda metaData, strm: getParams(
 )
 
 
-def adoMeta(metaData):
-    params = getParams(
-        metaData, 1, [*basicMeta(metaData, 1), "channels", "sample_rate"]
-    )
-    params["bit_rate"] = str(int(params["bit_rate"]) / 1000)
-    return params
-
-
-def vdoMeta(metaData):
-    params = getParams(metaData, 0, [*basicMeta(metaData, 0), "height", "r_frame_rate"])
-    params["bit_rate"] = str(int(params["bit_rate"]) / 1000)
+def getMeta(metaData, cType):
+    params = {}
+    for strm in range(2):
+        basicMeta = getParams(
+            metaData,
+            strm,
+            ["codec_type", "codec_name", "profile", "duration", "bit_rate"],
+        )
+        if basicMeta["codec_type"] == cType == "audio":  # audio stream
+            params = getParams(
+                metaData,
+                strm,
+                [*basicMeta, "channels", "sample_rate"],
+            )
+        elif basicMeta["codec_type"] == cType == "video":  # video stream
+            params = getParams(
+                metaData,
+                strm,
+                [*basicMeta, "height", "r_frame_rate"],
+            )
+        try:
+            params["bit_rate"] = str(round2(float(params["bit_rate"]) / 1000))
+        except KeyError:
+            pass
     return params
 
 
@@ -335,7 +348,7 @@ def selectCodec(codec, quality=None, speed=None):
         # fdk_aac defaults to a LPF cutoff around 14k
         # https://wiki.hydrogenaud.io/index.php?title=Fraunhofer_FDK_AAC#Bandwidth
 
-    if codec == "he":
+    elif codec == "he":
         cdc = [
             "libfdk_aac",
             "-profile:a",
@@ -348,7 +361,7 @@ def selectCodec(codec, quality=None, speed=None):
         # mono he-aac encodes are reported as stereo
         # https://trac.ffmpeg.org/ticket/3361
 
-    if codec == "opus":
+    elif codec == "opus":
         cdc = [
             "libopus",
             "-b:a",
@@ -361,7 +374,7 @@ def selectCodec(codec, quality=None, speed=None):
             "20",
         ]
 
-    if codec == "avc":
+    elif codec == "avc":
         cdc = [
             "libx264",
             "-preset:v",
@@ -372,7 +385,7 @@ def selectCodec(codec, quality=None, speed=None):
             "high",
         ]
 
-    if codec == "hevc":
+    elif codec == "hevc":
         cdc = [
             "libx265",
             "-preset:v",
@@ -431,7 +444,7 @@ for idx, file in enumerate(fileList):
     if isinstance(metaData, Exception):
         break
 
-    vdoInParams, adoInParams = vdoMeta(metaData), adoMeta(metaData)
+    vdoInParams, adoInParams = getMeta(metaData, "video"), getMeta(metaData, "audio")
 
     res = pargs.res
     if int(vdoInParams["height"]) < res:
@@ -462,7 +475,7 @@ for idx, file in enumerate(fileList):
     if isinstance(metaData, Exception):
         break
 
-    vdoOutParams, adoOutParams = vdoMeta(metaData), adoMeta(metaData)
+    vdoOutParams, adoOutParams = getMeta(metaData, "video"), getMeta(metaData, "audio")
 
     printNLogP(
         f"\nInput:: {formatParams(vdoInParams)}\n{formatParams(adoInParams)}"
