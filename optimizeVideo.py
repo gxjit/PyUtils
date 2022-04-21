@@ -33,7 +33,7 @@ def parseArgs():
     vCodec = partial(checkCodec, codecs=["avc", "hevc"])
 
     parser = argparse.ArgumentParser(
-        description="Optimize media file size by encoding to h264/aac/mp3."
+        description="Optimize Video/Audio files by encoding to avc/hevc/aac/opus."
     )
     parser.add_argument(
         "-d", "--dir", required=True, help="Directory path", type=dirPath
@@ -52,14 +52,14 @@ def parseArgs():
         "--res",
         default=540,
         type=int,
-        help="Limit video resolution to; can be 360, 480, 540, 720, etc.(default: 540)",
+        help="Limit video resolution; can be 360, 480, 540, 720, etc.(default: 540)",
     )
     parser.add_argument(
         "-f",
         "--fps",
         default=24,
         type=int,
-        help="Limit video frame rate to; can be 24, 25, 30, 60, etc.(default: 24)",
+        help="Limit video frame rate; can be 24, 25, 30, 60, etc.(default: 24)",
     )
     parser.add_argument(
         "-s",
@@ -88,7 +88,7 @@ def parseArgs():
     return parser.parse_args()
 
 
-currDTime = lambda: datetime.now().strftime("%y%m%d-%H%M%S")
+fileDTime = lambda: datetime.now().strftime("%y%m%d-%H%M%S")
 
 secsToHMS = lambda sec: str(timedelta(seconds=sec)).split(".")[0]
 
@@ -247,9 +247,19 @@ def getMetaData(ffprobePath, currFile, logFile):
     return metaData
 
 
-getParams = lambda metaData, strm, params: {
-    param: metaData["streams"][strm][param] for param in params
-}
+def getParams(metaData, strm, params):
+    paramDict = {}
+    for param in params:
+        try:
+            paramDict[param] = metaData["streams"][strm][param]
+        except KeyError:
+            paramDict[param] = "N/A"
+    return paramDict
+
+
+# getParams = lambda metaData, strm, params: {
+#     param: metaData["streams"][strm][param] for param in params
+# }
 
 basicMeta = lambda metaData, strm: getParams(
     metaData, strm, ["codec_type", "codec_name", "profile", "duration", "bit_rate"]
@@ -307,7 +317,7 @@ def compareDur(sourceDur, outDur, strmType, logFile):
         printNLog(logFile, msg)
 
 
-def selectCodec(codec, quality=None, speed=None, stereo=None):
+def selectCodec(codec, quality=None, speed=None):
 
     if codec == "aac":
         cdc = [
@@ -394,8 +404,8 @@ ffprobePath, ffmpegPath = checkPaths(
 )
 
 (outDir,) = makeTargetDirs(dirPath, [f"out-{outExt}"])
-tmpFile = outDir.joinpath(f"tmp-{currDTime()}.{outExt}")
-logFile = outDir.joinpath(f"{dirPath.stem}-{currDTime()}.log")
+tmpFile = outDir.joinpath(f"tmp-{fileDTime()}.{outExt}")
+logFile = outDir.joinpath(f"{dirPath.stem}-{fileDTime()}.log")
 printNLogP = partial(printNLog, logFile)
 
 outFileList = getFileList(outDir, [f".{outExt}"])
@@ -485,8 +495,6 @@ for idx, file in enumerate(fileList):
         f"Output file size: {outSize} MB"
         f"\nProcessed in: {secsToHMS(timeTaken)}, "
         f"Processing Speed: x{round2(length/timeTaken)}"
-        f"\nTotal Processing Time: {secsToHMS(sum(totalTime))}, "
-        f"Average Processing Time: {secsToHMS(fmean(totalTime))}"
         f"\nTotal Input Size: {round2(inSum)} MB, "
         f"Average Input Size: {round2(inMean)} MB"
         f"\nTotal Output Size: {round2(outSum)} MB, "
@@ -495,6 +503,8 @@ for idx, file in enumerate(fileList):
         f"{round2(((inSum-outSum)/inSum)*100)}%, "
         "Average Size Reduction: "
         f"{round2(((inMean-outMean)/inMean)*100)}%"
+        f"\nTotal Processing Time: {secsToHMS(sum(totalTime))}, "
+        f"Average Processing Time: {secsToHMS(fmean(totalTime))}"
         "\nEstimated time: "
         f"{secsToHMS((fmean(lengths)/fmean(totalTime)) * (len(fileList) - (idx+1)))}, "
         f"Average Speed: x{round2(fmean(lengths)/fmean(totalTime))}"
