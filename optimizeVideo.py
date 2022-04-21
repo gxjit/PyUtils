@@ -1,22 +1,23 @@
 import argparse
 import atexit
-import json
-import os
-import pathlib
-import shutil
-import subprocess
-import sys
-import time
-import traceback
+from traceback import format_exc
 from datetime import datetime, timedelta
-from functools import partial
 from fractions import Fraction
+from functools import partial
+from json import loads as jLoad
+from os import mkdir
+from pathlib import Path
+from shlex import join as shJoin
+from shutil import which as shWhich
 from statistics import fmean
+from subprocess import run
+from sys import exit
+from time import sleep, time
 
 
 def parseArgs():
     def dirPath(pth):
-        pthObj = pathlib.Path(pth)
+        pthObj = Path(pth)
         if pthObj.is_dir():
             return pthObj
         else:
@@ -107,7 +108,7 @@ def waitN(n):
         print(
             f"Waiting for {str(i).zfill(3)} seconds.", end="\r", flush=True
         )  # padding for clearing digits left from multi digit coundown
-        time.sleep(1)
+        sleep(1)
     print("\r")
 
 
@@ -116,7 +117,7 @@ def makeTargetDirs(dirPath, names):
     for name in names:
         newPath = dirPath.joinpath(name)
         if not newPath.exists():
-            os.mkdir(newPath)
+            mkdir(newPath)
         retNames.append(newPath)
     return retNames
 
@@ -124,7 +125,7 @@ def makeTargetDirs(dirPath, names):
 def checkPaths(paths):
     retPaths = []
     for path, absPath in paths.items():
-        retPath = shutil.which(path)
+        retPath = shWhich(path)
         if isinstance(retPath, type(None)) and not isinstance(absPath, type(None)):
             retPaths.append(absPath)
         else:
@@ -187,13 +188,13 @@ def swr(currFile, logFile, exp=None):
     if exp:
         printNLog(
             logFile,
-            f"\nException:\n{exp}\n\nAdditional Details:\n{traceback.format_exc()}",
+            f"\nException:\n{exp}\n\nAdditional Details:\n{format_exc()}",
         )
 
 
 def runCmd(cmd, currFile, logFile):
     try:
-        cmdOut = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        cmdOut = run(cmd, check=True, capture_output=True, text=True)
         cmdOut = cmdOut.stdout
     except Exception as callErr:
         swr(currFile, logFile, callErr)
@@ -243,7 +244,7 @@ def getMetaData(ffprobePath, currFile, logFile):
     cmdOut = runCmd(ffprobeCmd, currFile, logFile)
     if isinstance(cmdOut, Exception):
         return cmdOut
-    metaData = json.loads(cmdOut)
+    metaData = jLoad(cmdOut)
     return metaData
 
 
@@ -301,7 +302,7 @@ def cleanExit(outDir, tmpFile):
 
 def nothingExit():
     print("Nothing to do.")
-    sys.exit()
+    exit()
 
 
 def compareDur(sourceDur, outDur, strmType, logFile):
@@ -415,7 +416,7 @@ atexit.register(cleanExit, outDir, tmpFile)
 totalTime, inSizes, outSizes, lengths = ([] for i in range(4))
 
 for idx, file in enumerate(fileList):
-    outFile = pathlib.Path(file.parent.joinpath(f"{outDir.name}/{file.stem}.{outExt}"))
+    outFile = Path(file.parent.joinpath(f"{outDir.name}/{file.stem}.{outExt}"))
     statusInfoP = partial(
         statusInfo, idx=f"{idx+1}/{len(fileList)}", file=file, logFile=logFile
     )
@@ -444,12 +445,12 @@ for idx, file in enumerate(fileList):
     cv = selectCodec(pargs.video, speed=pargs.speed)
     cmd = getffmpegCmd(ffmpegPath, file, tmpFile, cv, ca, res, fps)
 
-    printNLog(logFile, f'\n{" ".join(cmd)}')
-    strtTime = time.time()
+    printNLog(logFile, f"\n{shJoin(cmd)}")
+    strtTime = time()
     cmdOut = runCmd(cmd, file, logFile)
     if isinstance(cmdOut, Exception):
         break
-    timeTaken = time.time() - strtTime
+    timeTaken = time() - strtTime
     totalTime.append(timeTaken)
 
     printNLogP(cmdOut)
