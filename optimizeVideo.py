@@ -4,7 +4,7 @@ from traceback import format_exc
 from datetime import datetime, timedelta
 from fractions import Fraction
 from functools import partial
-from json import loads as jLoad
+from json import loads as jLoads
 from os import mkdir
 from pathlib import Path
 from shlex import join as shJoin
@@ -244,7 +244,7 @@ def getMetaData(ffprobePath, currFile, logFile):
     cmdOut = runCmd(ffprobeCmd, currFile, logFile)
     if isinstance(cmdOut, Exception):
         return cmdOut
-    metaData = jLoad(cmdOut)
+    metaData = jLoads(cmdOut)
     return metaData
 
 
