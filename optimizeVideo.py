@@ -326,7 +326,7 @@ def compareDur(sourceDur, outDur, strmType, logFile):
     if diff > n:
         msg = (
             f"\n********\nWARNING: Differnce between {strmType} source and output"
-            f" durations is more than {str(n)} second(s).\n"
+            f" durations({str(round2(diff))} seconds) is more than {str(n)} second(s).\n"
         )
         printNLog(logFile, msg)
 
