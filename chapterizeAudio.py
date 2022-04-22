@@ -105,7 +105,9 @@ def checkPaths(paths):
 
 
 getFileList = lambda dirPath: [
-    f for f in dirPath.iterdir() if f.is_file() and f.suffix.lower() in [".m4a", ".m4b", ".mp3"]
+    f
+    for f in dirPath.iterdir()
+    if f.is_file() and f.suffix.lower() in [".m4a", ".m4b", ".mp3"]
 ]
 
 

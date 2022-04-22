@@ -99,6 +99,8 @@ bytesToMB = lambda bytes: round2(bytes / float(1 << 20))
 
 now = lambda: str(datetime.now()).split(".")[0]
 
+timeNow = lambda: str(datetime.now().time()).split(".")[0]
+
 dynWait = lambda secs, n=7.5: secs / n
 
 
@@ -302,7 +304,7 @@ formatParams = lambda params: "".join(
 def statusInfo(status, idx, file, logFile):
     printNLog(
         logFile,
-        f"\n----------------\n{status} file {idx}:" f" {str(file.name)} at {now()}",
+        f"\n----------------\n{status} file {idx}:" f" {str(file.name)} at {timeNow()}",
     )
 
 
@@ -325,8 +327,8 @@ def compareDur(sourceDur, outDur, strmType, logFile):
     #     msg = f"\n\nINFO: Mismatched {strmType} source and output duration."
     if diff > n:
         msg = (
-            f"\n********\nWARNING: Differnce between {strmType} source and output"
-            f" durations({str(round2(diff))} seconds) is more than {str(n)} second(s).\n"
+            f"\n********\nWARNING: Differnce between {strmType} source and output "
+            f"durations({str(round2(diff))} seconds) is more than {str(n)} second(s).\n"
         )
         printNLog(logFile, msg)
 
@@ -419,12 +421,14 @@ ffprobePath, ffmpegPath = checkPaths(
 
 (outDir,) = makeTargetDirs(dirPath, [f"out-{outExt}"])
 tmpFile = outDir.joinpath(f"tmp-{fileDTime()}.{outExt}")
-logFile = outDir.joinpath(f"{dirPath.stem}-{fileDTime()}.log")
+logFile = outDir.joinpath(f"{dirPath.stem}.log")
 printNLogP = partial(printNLog, logFile)
 
 outFileList = getFileList(outDir, [f".{outExt}"])
 
 atexit.register(cleanExit, outDir, tmpFile)
+
+printNLogP(f"\n\n====== Script Started at {now()} ======\n")
 
 totalTime, inSizes, outSizes, lengths = ([] for i in range(4))
 
@@ -507,7 +511,7 @@ for idx, file in enumerate(fileList):
     printNLogP(
         f"\n\nInput file size: {inSize} MB, "
         f"Output file size: {outSize} MB"
-        f"\nProcessed in: {secsToHMS(timeTaken)}, "
+        f"\nProcessed {secsToHMS(length)} in: {secsToHMS(timeTaken)}, "
         f"Processing Speed: x{round2(length/timeTaken)}"
         f"\nTotal Input Size: {round2(inSum)} MB, "
         f"Average Input Size: {round2(inMean)} MB"
@@ -524,6 +528,9 @@ for idx, file in enumerate(fileList):
         f"Average Speed: x{round2(fmean(lengths)/fmean(totalTime))}"
     )
 
+    if idx + 1 == len(fileList):
+        continue
+
     if pargs.wait:
         waitN(int(pargs.wait))
     else:
@@ -533,7 +540,7 @@ for idx, file in enumerate(fileList):
         #     break
 
 
-# H264 medium efficiency fast encoding widespread support
-# > H265 high efficiency Slow encoding medicore support
-# > AV1 higher efficiency slow encoding little to no support
+# H264: medium efficiency, fast encoding, widespread support
+# > H265: high efficiency, slow encoding, medicore support
+# > AV1: higher efficiency, slow encoding, little to no support
 # libopus > fdk_aac SBR > fdk_aac >= vorbis > libmp3lame > ffmpeg aac
