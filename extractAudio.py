@@ -157,10 +157,3 @@ main(parseArgs())
 # MP4/M4A MP2, MP3, LC-AAC, HE-AAC, AC3
 # WebM    Vorbis, Opus
 # OGG Vorbis, Opus
-
-# ffmpeg:
-# AAC LC: libfdk_aac, aac
-# HE-AAC: libfdk_aac
-# Vorbis: libvorbis, vorbis
-# MP3: libmp3lame, libshine
-# Opus: libopus

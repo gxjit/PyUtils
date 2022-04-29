@@ -301,3 +301,4 @@ rmEmptyDirs([outDir, dryDir])
 # https://trac.ffmpeg.org/wiki/Concatenate
 # https://ffmpeg.org/ffmpeg-formats.html#Metadata-1
 # https://ffmpeg.org/ffmpeg-formats.html#concat-1
+# https://wiki.xiph.org/Chapter_Extension # opus support
