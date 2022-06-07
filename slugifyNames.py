@@ -104,4 +104,4 @@ if pargs.files:
 
 for file in fileList:
     newName = slugify(file.stem, pargs.unicode, pargs.spaces, pargs.dots, pargs.case)
-    file.rename(file.with_name(newName))
+    file.rename(file.with_stem(newName))
