@@ -18,42 +18,36 @@ def parseArgs():
         "-r",
         "--recursive",
         action="store_true",
-        default=False,
         help="Recursively process the directory tree.",
     )
     parser.add_argument(
         "-u",
         "--unicode",
         action="store_true",
-        default=False,
         help="Allow Unicode.",
     )
     parser.add_argument(
         "-d",
         "--dots",
-        action="store_true",
-        default=True,
+        action="store_false",
         help="Keep dots/periods.",
     )
     parser.add_argument(
         "-s",
         "--spaces",
-        action="store_true",
-        default=True,
+        action="store_false",
         help="Keep whitespace.",
     )
     parser.add_argument(
         "-c",
         "--case",
         action="store_true",
-        default=False,
         help="Convert to lower case.",
     )
     parser.add_argument(
         "-f",
         "--files",
         action="store_true",
-        default=False,
         help="Process files only/Don't touch directories.",
     )
     yn = parser.add_mutually_exclusive_group(required=False)
@@ -61,14 +55,12 @@ def parseArgs():
         "-n",
         "--dry",
         action="store_true",
-        default=False,
         help="Dry run.",
     )
     yn.add_argument(
         "-y",
         "--yes",
         action="store_true",
-        default=False,
         help="Assume yes for prompts.",
     )
     return parser.parse_args()
