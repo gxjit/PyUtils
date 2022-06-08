@@ -56,14 +56,15 @@ def parseArgs():
         default=False,
         help="Process files only/Don't touch directories.",
     )
-    parser.add_argument(
+    yn = parser.add_mutually_exclusive_group(required=False)
+    yn.add_argument(
         "-n",
         "--dry",
         action="store_true",
         default=False,
         help="Dry run.",
     )
-    parser.add_argument(
+    yn.add_argument(
         "-y",
         "--yes",
         action="store_true",
