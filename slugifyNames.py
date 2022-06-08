@@ -93,8 +93,13 @@ def slugify(
     else:
         value = normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
 
-    replace = {"[": "(", "]": ")", ":": "_", ",": "_", **replace}
-    # "." "'", "&" ? # Option to allow Comma?
+    repl = {"[": "(", "]": ")", ":": "_", ",": "_"}
+
+    if not keepDots:
+        repl = {**repl, ".": "_"}
+
+    replace = {**repl, **replace}
+    # "'", "&" ? # Option to allow Comma?
     for k, v in replace.items():
         value = value.replace(k, v)
 
