@@ -87,11 +87,11 @@ def slugify(
 
     repl = {"[": "(", "]": ")", ":": "_", ",": "_"}
 
-    if not keepDots:
+    if not keepDots:  # with replace flag
         repl = {**repl, ".": "_"}
 
     replace = {**repl, **replace}
-    # "'", "&" ? # Option to allow Comma?
+    # "'", "&" ? # Option to allow Comma? # Replace spaces with hyphens
     for k, v in replace.items():
         value = value.replace(k, v)
 
