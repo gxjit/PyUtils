@@ -15,6 +15,13 @@ def parseArgs():
     parser = ArgumentParser(description="Slugify filenames.")
     parser.add_argument("dir", metavar="DirPath", help="Directory path", type=dirPath)
     parser.add_argument(
+        "-r",
+        "--recursive",
+        action="store_true",
+        default=False,
+        help="Recursively process the directory tree.",
+    )
+    parser.add_argument(
         "-u",
         "--unicode",
         action="store_true",
@@ -49,6 +56,20 @@ def parseArgs():
         default=False,
         help="Process files only/Don't touch directories.",
     )
+    parser.add_argument(
+        "-n",
+        "--dry",
+        action="store_true",
+        default=False,
+        help="Dry run.",
+    )
+    parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        default=False,
+        help="Assume yes for prompts.",
+    )
     return parser.parse_args()
 
 
@@ -58,7 +79,7 @@ def slugify(
     keepSpace=True,
     keepDots=True,
     lowerCase=False,
-    replace={},  # TODO: extend customizations through cli arguments
+    replace={},  # TODO: expose this to cli arguments
 ):
     """
     Adapted from django.utils.text.slugify
@@ -71,7 +92,8 @@ def slugify(
     else:
         value = normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
 
-    replace = {"[": "(", "]": ")", ":": "_", **replace}  # ".": "_"
+    replace = {"[": "(", "]": ")", ":": "_", ",": "_", **replace}
+    # "." "'", "&" ? # Option to allow Comma?
     for k, v in replace.items():
         value = value.replace(k, v)
 
@@ -89,20 +111,62 @@ def slugify(
 
     if not keepSpace:
         value = re.sub(r"[-\s]+", "-", value)
+
     return value
+
+
+def areYouSure():
+    print("\nAre you sure you want to commit these changes? (y/n)")
+    try:
+        choice = str(input("\n> ")).lower()
+        if choice not in ["y", "n"]:
+            raise ValueError
+    except ValueError:
+        print("\nInvalid input.")
+        areYouSure()
+
+    if choice == "y":  # type: ignore
+        return
+    else:
+        exit()
 
 
 pargs = parseArgs()
 
 dirPath = pargs.dir.resolve()
 
-fileList = list(dirPath.iterdir())
+slugifyP = lambda f: slugify(f, pargs.unicode, pargs.spaces, pargs.dots, pargs.case)
+
+
+fileList = dirPath.glob("*")
+
+if pargs.recursive:
+    fileList = dirPath.rglob("*")
+
 
 if pargs.files:
-    fileList = [f for f in fileList if f.is_file()]
+    fileList = (f for f in fileList if f.is_file())
+
+slugified = [
+    (f, f.with_stem(slugifyP(f.stem)) if f.is_file() else f.with_name(slugifyP(f.name)))
+    for f in fileList
+]
 
 
-for file in fileList:
-    newName = slugify(file.stem, pargs.unicode, pargs.spaces, pargs.dots, pargs.case)
-    file.rename(file.with_name(f"{newName}{file.suffix.lower()}"))
-# with_stem is buggy
+for file in slugified:
+    oldFile, newFile = file
+    if newFile.name != oldFile.name:
+        print(f"{oldFile.name} -> \n{(newFile).name}")
+
+if not pargs.yes and not pargs.dry:
+    areYouSure()
+
+if not pargs.dry:
+    for file in slugified:
+        oldFile, newFile = file
+        if newFile.name != oldFile.name:
+            oldFile.rename(newFile)
+
+# is_dir check
+# lowercase suffixes
+# newName = f"{newName}{file.suffix.lower()}"
