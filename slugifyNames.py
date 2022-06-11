@@ -75,10 +75,11 @@ def parseArgs():
 def slugify(
     value,
     allowUnicode=False,
+    replace=True,
     keepSpace=True,
     keepDots=True,
     lowerCase=False,
-    replace={},  # TODO: expose this to cli arguments
+    swap={},  # TODO: expose this to cli arguments
 ):
     """
     Adapted from django.utils.text.slugify
@@ -91,11 +92,11 @@ def slugify(
     else:
         value = normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
 
-    replace = {"[": "(", "]": ")", **replace}
+    swap = {"[": "(", "]": ")", **swap}
     # "," '", "&" ? # Option to allow Comma?
-    # Allow specific characters?
+    # TODO: Allow specific characters?
 
-    for k, v in replace.items():
+    for k, v in swap.items():
         value = value.replace(k, v)
 
     rejectPattern = r"[^\w\s)(_-]"
@@ -107,7 +108,7 @@ def slugify(
         rejectPattern = rejectPattern.replace(r"\s", r"\s.")
 
     # Replace non acceptable characters with "_" underscores
-    replaceWith = "_" if pargs.replace else ""
+    replaceWith = "_" if replace else ""
 
     value = re.sub(rejectPattern, replaceWith, value).strip()
 
@@ -140,7 +141,7 @@ pargs = parseArgs()
 
 dirPath = pargs.dir.resolve()
 
-slugifyP = lambda f: slugify(f, pargs.unicode, pargs.spaces, pargs.dots, pargs.case)
+slugifyP = lambda f: slugify(f, pargs.unicode, pargs.replace, pargs.spaces, pargs.dots, pargs.case)
 
 
 fileList = dirPath.glob("*")
@@ -174,4 +175,4 @@ if not pargs.dry:
 
 # lowercase suffixes?
 # newName = f"{newName}{file.suffix.lower()}"
-# backup names to json file for recovery
+# TODO: backup names to json file for recovery
