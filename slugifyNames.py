@@ -27,16 +27,22 @@ def parseArgs():
         help="Allow Unicode.",
     )
     parser.add_argument(
+        "-x",
+        "--replace",
+        action="store_false",
+        help="Do not replace non acceptable characters with underscores.",
+    )
+    parser.add_argument(
         "-d",
         "--dots",
         action="store_false",
-        help="Keep dots/periods.",
+        help="Do not keep dots/periods.",
     )
     parser.add_argument(
         "-s",
         "--spaces",
         action="store_false",
-        help="Keep whitespace.",
+        help="Do not keep whitespace(will be replaced with hyphens).",
     )
     parser.add_argument(
         "-c",
@@ -85,24 +91,25 @@ def slugify(
     else:
         value = normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
 
-    repl = {"[": "(", "]": ")", ":": "_", ",": "_"}
+    replace = {"[": "(", "]": ")", **replace}
+    # "," '", "&" ? # Option to allow Comma?
+    # Allow specific characters?
 
-    if not keepDots:  # only with replace flag?
-        repl = {**repl, ".": "_"}
-
-    replace = {**repl, **replace}
-    # "'", "&" ? # Option to allow Comma? # Replace spaces with hyphens?
     for k, v in replace.items():
         value = value.replace(k, v)
 
-    acceptablePattern = r"[^\w\s)(_-]"
+    rejectPattern = r"[^\w\s)(_-]"
     # \w word characters/alphanumerics, \s whitespace characters,
     # underscores, parentheses, and hyphens
+    # acceptPattern = rejectPattern.replace("^", "")
 
     if keepDots:
-        acceptablePattern = acceptablePattern.replace(r"\s", r"\s.")
+        rejectPattern = rejectPattern.replace(r"\s", r"\s.")
 
-    value = re.sub(acceptablePattern, "", value).strip()
+    # Replace non acceptable characters with "_" underscores
+    replaceWith = "_" if pargs.replace else ""
+
+    value = re.sub(rejectPattern, replaceWith, value).strip()
 
     if lowerCase:
         value = value.lower()
@@ -165,6 +172,6 @@ if not pargs.dry:
         if newFile.name != oldFile.name:
             oldFile.rename(newFile)
 
-# is_dir check
-# lowercase suffixes
+# lowercase suffixes?
 # newName = f"{newName}{file.suffix.lower()}"
+# backup names to json file for recovery
