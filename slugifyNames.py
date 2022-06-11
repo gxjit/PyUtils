@@ -79,7 +79,7 @@ def slugify(
     keepSpace=True,
     keepDots=True,
     lowerCase=False,
-    swap={},  # TODO: expose this to cli arguments
+    swap={},  # TODO: expose this to cli?
 ):
     """
     Adapted from django.utils.text.slugify
@@ -99,7 +99,7 @@ def slugify(
     for k, v in swap.items():
         value = value.replace(k, v)
 
-    rejectPattern = r"[^\w\s)(_-]"
+    rejectPattern = r"[^\w\s)(_-]+" # r"[^\w\s)(_-]"
     # \w word characters/alphanumerics, \s whitespace characters,
     # underscores, parentheses, and hyphens
     # acceptPattern = rejectPattern.replace("^", "")
@@ -107,7 +107,6 @@ def slugify(
     if keepDots:
         rejectPattern = rejectPattern.replace(r"\s", r"\s.")
 
-    # Replace non acceptable characters with "_" underscores
     replaceWith = "_" if replace else ""
 
     value = re.sub(rejectPattern, replaceWith, value).strip()
