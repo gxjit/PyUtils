@@ -19,7 +19,7 @@ def parseArgs():
 
     def sepExts(exts):
         if "," in exts:
-            return filter(len, exts.strip().split(","))
+            return tuple(filter(len, exts.strip().split(",")))
         else:
             return [exts]
             # raise ArgumentTypeError("Invalid extensions list")
@@ -43,7 +43,7 @@ def parseArgs():
     parser.add_argument(
         "-e",
         "--extensions",
-        default=[],
+        default=(".mp4", ".mov"),
         help="Comma separated file extensions. (default: .mp4, .mov)",
         type=sepExts,
     )
@@ -103,11 +103,11 @@ def checkPath(path, absPath=None):
 
 def getFileList(dirPath, exts, rec=False):
     if rec:
-        return (f for f in dirPath.rglob("*.*") if f.suffix.lower() in exts)
+        return [f for f in dirPath.rglob("*.*") if f.suffix.lower() in exts]
     else:
-        return (
+        return [
             f for f in dirPath.iterdir() if f.is_file() and f.suffix.lower() in exts
-        )
+        ]
 
 
 getffprobeCmd = lambda ffprobePath, file: [
@@ -146,9 +146,11 @@ def checkExceptions(output):
 
 pargs = parseArgs()
 
-exts = (".mp4", ".mov", *pargs.extensions)
+fileList = getFileList(pargs.dir.resolve(), pargs.extensions, pargs.recursive)
 
-fileList = getFileList(pargs.dir.resolve(), exts, pargs.recursive)
+if not fileList:
+    print("Nothing to do.")
+    exit()
 
 cmdOut = [getMetaData(ffprobePath, f) for f in fileList]
 
