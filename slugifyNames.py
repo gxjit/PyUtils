@@ -93,13 +93,13 @@ def slugify(
         value = normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
 
     swap = {"[": "(", "]": ")", **swap}
-    # "," '", "&" ? # Option to allow Comma?
+    # "," "'", "&" ? # Option to allow Comma?
     # TODO: Allow specific characters?
 
     for k, v in swap.items():
         value = value.replace(k, v)
 
-    rejectPattern = r"[^\w\s)(_-]+" # r"[^\w\s)(_-]"
+    rejectPattern = r"[^\w\s)(_-]+"  # r"[^\w\s)(_-]"
     # \w word characters/alphanumerics, \s whitespace characters,
     # underscores, parentheses, and hyphens
     # acceptPattern = rejectPattern.replace("^", "")
@@ -140,7 +140,9 @@ pargs = parseArgs()
 
 dirPath = pargs.dir.resolve()
 
-slugifyP = lambda f: slugify(f, pargs.unicode, pargs.replace, pargs.spaces, pargs.dots, pargs.case)
+slugifyP = lambda f: slugify(
+    f, pargs.unicode, pargs.replace, pargs.spaces, pargs.dots, pargs.case
+)
 
 
 fileList = dirPath.glob("*")
