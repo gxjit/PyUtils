@@ -172,7 +172,7 @@ modeStreams = mode(collectAtElement(formatData, 2))
 
 
 print(
-    f"\nFor {len(formatData)} files:\n"
+    f"\nContainer format summary for {len(formatData)} files:\n"
     f"Sum Duration: {secsToHMS(sumDur)}\n"
     f"Mean Duration: {secsToHMS(meanDur)}\n"
     f"Sum Bit Rate: {convertSize(sumBitR)}\n"
