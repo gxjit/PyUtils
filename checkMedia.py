@@ -19,9 +19,10 @@ def parseArgs():
 
     def sepExts(exts):
         if "," in exts:
-            return [e for e in exts.strip().split(",") if e != ""]
+            return filter(len, exts.strip().split(","))
         else:
-            raise ArgumentTypeError("Invalid extensions list")
+            return [exts]
+            # raise ArgumentTypeError("Invalid extensions list")
 
     parser = ArgumentParser(
         description=(
@@ -29,9 +30,10 @@ def parseArgs():
             "file metadata(bitrate, duration etc) using ffprobe."
         )
     )
-    parser.add_argument(
-        "-d", "--dir", required=True, help="Directory path", type=checkDirPath
-    )
+    parser.add_argument("dir", help="Directory path.", type=checkDirPath)
+    # parser.add_argument(
+    #     "-d", "--dir", required=True, help="Directory path", type=checkDirPath
+    # )
     parser.add_argument(
         "-r",
         "--recursive",
@@ -42,7 +44,7 @@ def parseArgs():
         "-e",
         "--extensions",
         default=[],
-        help="Comma separated file extensions; end single extension with comma. (default: .mp4, .mov)",
+        help="Comma separated file extensions. (default: .mp4, .mov)",
         type=sepExts,
     )
 
