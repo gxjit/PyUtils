@@ -17,6 +17,12 @@ def parseArgs():
         else:
             raise ArgumentTypeError("Invalid Directory path")
 
+    def sepExts(exts):
+        if "," in exts:
+            return [e for e in exts.strip().split(",") if e != ""]
+        else:
+            raise ArgumentTypeError("Invalid extensions list")
+
     parser = ArgumentParser(
         description=(
             "Calculate Sum/Mean/Mode statistics for Video/Audio "
@@ -32,6 +38,13 @@ def parseArgs():
         action="store_true",
         help="Process files recursively in all child directories.",
     )
+    parser.add_argument(
+        "-e",
+        "--extensions",
+        default=[],
+        help="Comma separated file extensions; end single extension with comma. (default: .mp4, .mov)",
+        type=sepExts,
+    )
 
     return parser.parse_args()
 
@@ -39,6 +52,8 @@ def parseArgs():
 round2 = lambda x: round(float(x), ndigits=2)
 
 secsToHMS = lambda sec: str(timedelta(seconds=sec)).split(".")[0]
+
+collectAtElement = lambda itr, idx: [x[idx] for x in itr]
 
 
 def convertSize(sBytes):
@@ -74,12 +89,14 @@ def getFormatData(meta):
     return (float(fmt["duration"]), float(fmt["bit_rate"]), float(fmt["nb_streams"]))
 
 
-def checkPath(path, absPath=None):  # check abs paths too
-    retPath = which(path)
-    if isinstance(retPath, type(None)) and not isinstance(absPath, type(None)):
+def checkPath(path, absPath=None):
+    path = which(path)
+    if path:
+        return path
+    elif absPath and which(absPath):
         return absPath
     else:
-        return path
+        raise f"{path} or {absPath} is not an executable."
 
 
 def getFileList(dirPath, exts, rec=False):
@@ -127,8 +144,7 @@ def checkExceptions(output):
 
 pargs = parseArgs()
 
-exts = (".mp4", ".mov")
-
+exts = (".mp4", ".mov", *pargs.extensions)
 
 fileList = getFileList(pargs.dir.resolve(), exts, pargs.recursive)
 
@@ -138,22 +154,26 @@ checkExceptions(cmdOut)
 
 formatData = [getFormatData(o) for o in cmdOut]
 
-sumDur = round2(sum([(x[0]) for x in formatData]))
+durations = collectAtElement(formatData, 0)
 
-meanDur = round2(fmean([x[0] for x in formatData]))
+bitRates = collectAtElement(formatData, 1)
 
-sumBitR = round2(sum([x[1] for x in formatData]))
+sumDur = round2(sum(durations))
 
-meanBitR = round2(fmean([x[1] for x in formatData]))
+meanDur = round2(fmean(durations))
 
-modeStreams = mode([x[2] for x in formatData])
+sumBitR = round2(sum(bitRates))
+
+meanBitR = round2(fmean(bitRates))
+
+modeStreams = mode(collectAtElement(formatData, 2))
 
 
 print(
     f"\nFor {len(formatData)} files:\n"
     f"Sum Duration: {secsToHMS(sumDur)}\n"
     f"Mean Duration: {secsToHMS(meanDur)}\n"
-    f"Sum Bit Rate: {convertSize(sumBitR)}\n"  # In KBPS?
+    f"Sum Bit Rate: {convertSize(sumBitR)}\n"
     f"Mean Bit Rate: {convertSize(meanBitR)}\n"
     f"Mode Number of Streams: {int(modeStreams)}"
 )
